@@ -1,5 +1,7 @@
 # CraftHub
 
+<img width="1920" height="988" alt="image" src="https://github.com/user-attachments/assets/61bab7b8-0fe5-4383-aef2-7d1355c2cb81" />
+
 A self-hosted "Creative Cloud"-style launcher for the open-source
 [storytold](https://github.com/storytold) Crafting Apps (PhotoCraft, VectorCraft, FilmCraft, LightCraft, …).
 One Rust binary in one small Docker image that:
