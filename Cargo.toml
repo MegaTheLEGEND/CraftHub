@@ -1,0 +1,37 @@
+[package]
+name = "craft-hub"
+version = "0.1.0"
+edition = "2021"
+description = "Self-hosted launcher and version manager for the ArtCraft 'Crafting Apps' web builds, with Authentik/OIDC SSO"
+readme = "README.md"
+keywords = ["launcher", "self-hosted", "oidc", "authentik", "wasm"]
+categories = ["web-programming::http-server"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+axum-extra = { version = "0.10", features = ["cookie-private"] }
+base64 = "0.22"
+brotli = "7"
+flate2 = "1"
+hex = "0.4"
+jsonwebtoken = "9"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+time = "0.3"
+tokio = { version = "1", features = ["full"] }
+toml = "0.8"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "set-header"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true

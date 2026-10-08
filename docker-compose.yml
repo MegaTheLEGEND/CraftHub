@@ -1,0 +1,18 @@
+services:
+  craft-hub:
+    build: .
+    # image: ghcr.io/you/craft-hub:latest
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    volumes: ["craft-data:/data"]
+    environment:
+      PUBLIC_URL: https://craft.example.com          # exactly what the browser sees
+      # Authentication starts OFF. Configure Authentik in the UI: Settings -> Authentication.
+      # (Or set OIDC_ISSUER / OIDC_CLIENT_ID / OIDC_CLIENT_SECRET here to enable it at boot.)
+      UPDATE_INTERVAL_HOURS: "6"
+      AUTO_INSTALL: "true"
+      KEEP_VERSIONS: "3"
+      INCLUDE_PRERELEASE: "true"                     # photocraft currently only ships rc builds
+      # EXTRA_CA_FILE: /certs/ca.pem                 # if Authentik uses a private CA
+volumes:
+  craft-data:

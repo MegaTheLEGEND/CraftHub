@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CraftHub</title>
+<style>
+:root{
+  --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a; --text:#e6e8ee; --muted:#9aa3b2;
+  --accent:#5aa2ff; --accent-ink:#06101f; --ok:#5fd39a; --warn:#f2c25b; --bad:#ff6b6b;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light){
+  :root{ --bg:#f5f6f8; --panel:#ffffff; --panel2:#f0f2f5; --line:#dde1e8; --text:#1b1e25; --muted:#5d6676;
+         --accent:#1f6feb; --accent-ink:#ffffff; --ok:#1b8a5a; --warn:#9a6b00; --bad:#c43c3c; color-scheme: light; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;align-items:center;gap:1rem;padding:.9rem 1.5rem;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+.brand{font-weight:700;letter-spacing:.02em;font-size:1.15rem}
+.brand b{color:var(--accent)}
+.grow{flex:1}
+.chip{color:var(--muted);font-size:.85rem}
+button,.btn{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:.45rem .8rem;border-radius:8px;text-decoration:none;display:inline-block}
+button:hover,.btn:hover{border-color:var(--muted)}
+button:disabled,.btn.disabled{opacity:.45;cursor:not-allowed;pointer-events:none}
+.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.primary:hover{filter:brightness(1.07);border-color:var(--accent)}
+.danger{color:var(--bad)}
+main{max-width:1200px;margin:0 auto;padding:1.5rem}
+.toolbar{display:flex;gap:.75rem;align-items:center;margin-bottom:1.1rem;flex-wrap:wrap}
+.toolbar label{color:var(--muted);font-size:.9rem;display:flex;gap:.4rem;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:1rem}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1rem;display:flex;flex-direction:column;gap:.7rem}
+.card.dim{opacity:.62}
+.top{display:flex;gap:.8rem;align-items:center}
+.icon{width:48px;height:48px;border-radius:11px;background:var(--panel2);display:grid;place-items:center;font-weight:700;color:var(--accent);overflow:hidden;flex:none;font-size:1.25rem}
+.icon img{width:100%;height:100%;object-fit:cover}
+.name{font-weight:650;font-size:1.05rem}
+.desc{color:var(--muted);font-size:.88rem;min-height:2.5em}
+.badges{display:flex;gap:.4rem;flex-wrap:wrap}
+.badge{font-size:.75rem;padding:.12rem .5rem;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.badge.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
+.badge.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,var(--line))}
+.badge.bad{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
+.actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:auto}
+.bar{height:6px;border-radius:99px;background:var(--panel2);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent);transition:width .3s}
+.bar.indet>i{width:40%!important;animation:slide 1.1s infinite ease-in-out}
+@keyframes slide{0%{margin-left:-40%}100%{margin-left:100%}}
+.small{font-size:.8rem;color:var(--muted)}
+.err{font-size:.8rem;color:var(--bad);word-break:break-word}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:0;width:min(760px,94vw);max-height:86vh}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+.dlg-h{display:flex;align-items:center;padding:.9rem 1.1rem;border-bottom:1px solid var(--line);gap:.8rem}
+.dlg-h h3{margin:0;flex:1;font-size:1.05rem}
+.dlg-b{padding:.5rem 1.1rem 1.1rem;overflow:auto;max-height:68vh}
+table{width:100%;border-collapse:collapse}
+td,th{text-align:left;padding:.5rem .4rem;border-bottom:1px solid var(--line);font-size:.9rem;vertical-align:middle}
+th{color:var(--muted);font-weight:500;font-size:.8rem}
+td.r{text-align:right;white-space:nowrap}
+.sw{display:flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--muted)}
+h4{margin:1rem 0 .3rem;font-size:.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+#toast{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:.6rem 1rem;border-radius:10px;display:none;max-width:90vw;z-index:20}
+.empty{color:var(--muted);padding:3rem;text-align:center}
+.banner{background:color-mix(in srgb,var(--warn) 16%,var(--panel));border:1px solid color-mix(in srgb,var(--warn) 50%,var(--line));border-radius:10px;padding:.6rem .9rem;margin-bottom:1rem;font-size:.9rem}
+.fld{display:grid;gap:.2rem;margin:.5rem 0}.fld label{font-size:.8rem;color:var(--muted)}
+.fld input{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:.5rem .7rem;width:100%;box-sizing:border-box}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Craft<b>Hub</b></div>
+  <div class="grow"></div>
+  <span class="chip" id="who"></span>
+  <button id="settingsBtn" style="display:none">Settings</button>
+  <button id="checkAll" style="display:none" title="Look for new releases of every app">Check for updates</button>
+  <a class="btn" id="signout" href="/auth/logout" style="display:none">Sign out</a>
+</header>
+
+<main>
+  <div id="openBanner" class="banner" style="display:none">Authentication is <b>off</b>: anyone who can reach this page is an administrator. <a href="#" id="openBannerLink">Set up SSO in Settings</a>.</div>
+  <div class="toolbar">
+    <label><input type="checkbox" id="onlyReady"> Only show apps with a web build</label>
+    <span class="grow"></span>
+    <span class="small" id="stamp"></span>
+  </div>
+  <div class="grid" id="grid"><div class="empty">Loading…</div></div>
+</main>
+
+<dialog id="dlg"><div class="dlg-h"><h3 id="dlgTitle"></h3><button id="dlgClose">Close</button></div><div class="dlg-b" id="dlgBody"></div></dialog>
+<div id="toast"></div>
+
+<script>
+const $ = (s, r=document) => r.querySelector(s);
+let ME = {admin:false}, APPS = [], openDialog = null;
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtSize = n => n > 1048576 ? (n/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(n/1024))+' KB';
+const fmtDate = s => s ? new Date(s).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}) : '';
+const ago = t => { if(!t) return 'never'; const m = Math.round((Date.now()/1000 - t)/60); return m < 1 ? 'just now' : m < 60 ? m+' min ago' : m < 1440 ? Math.round(m/60)+' h ago' : Math.round(m/1440)+' d ago'; };
+
+function toast(msg, ms=4500){ const t=$('#toast'); t.textContent=msg; t.style.display='block'; clearTimeout(toast.h); toast.h=setTimeout(()=>t.style.display='none',ms); }
+
+async function api(path, opts={}){
+  const o = {method:'GET', headers:{}, ...opts};
+  if (o.method !== 'GET') { o.headers['X-Requested-With']='craft-hub'; }
+  if (o.body && typeof o.body !== 'string') { o.body = JSON.stringify(o.body); o.headers['Content-Type']='application/json'; }
+  const r = await fetch(path, o);
+  if (r.status === 401) { location.href = '/auth/login?next=' + encodeURIComponent(location.pathname); throw new Error('signed out'); }
+  const text = await r.text();
+  let data = null; try { data = text ? JSON.parse(text) : null; } catch {}
+  if (!r.ok) throw new Error((data && data.error) || r.statusText || 'request failed');
+  return data;
+}
+
+const detectOS = () => { const u = navigator.userAgent; if (/Windows/i.test(u)) return 'windows'; if (/Android/i.test(u)) return 'other'; if (/Mac OS X|Macintosh/i.test(u)) return 'macos'; if (/FreeBSD/i.test(u)) return 'freebsd'; if (/Linux|X11/i.test(u)) return 'linux'; return 'other'; };
+const OS = detectOS();
+const OS_LABEL = {windows:'Windows', macos:'macOS', linux:'Linux', freebsd:'FreeBSD', other:'Other'};
+
+function jobPct(j){ return j && j.total ? Math.min(100, Math.round(100*j.done/j.total)) : 0; }
+
+function card(a){
+  const j = a.job && (a.job.state === 'downloading' || a.job.state === 'extracting') ? a.job : null;
+  const hasWeb = !!a.latest || a.installed.length > 0;
+  const el = document.createElement('div');
+  el.className = 'card' + (!hasWeb && a.checked ? ' dim' : '');
+  const badges = [];
+  if (a.active) badges.push(`<span class="badge ok">v${esc(a.active)}</span>`);
+  else if (a.latest) badges.push(`<span class="badge">not installed</span>`);
+  else if (a.checked) badges.push(`<span class="badge">no web build yet</span>`);
+  else badges.push(`<span class="badge">checking…</span>`);
+  if (a.update_available && a.latest) badges.push(`<span class="badge warn">update: v${esc(a.latest.version)}</span>`);
+  if (a.latest && a.latest.prerelease && !a.active) badges.push(`<span class="badge">pre-release</span>`);
+  const act = a.installed.find(i => i.version === a.active);
+  if (act && !act.verified) badges.push(`<span class="badge warn" title="No published checksum was available">unverified</span>`);
+
+  let prog = '';
+  if (j) prog = `<div><div class="bar ${j.total ? '' : 'indet'}"><i style="width:${jobPct(j)}%"></i></div><div class="small">${esc(j.message)}${j.total ? ' · '+jobPct(j)+'%' : ''}</div></div>`;
+  else if (a.job && a.job.state === 'error') prog = `<div class="err">${esc(a.job.message)}</div>`;
+  else if (a.last_error) prog = `<div class="err">${esc(a.last_error)}</div>`;
+
+  const nativeCount = a.native.length;
+  el.innerHTML = `
+    <div class="top">
+      <div class="icon"><img alt="" src="${esc(a.icon)}" onerror="this.remove()"><span>${esc(a.name[0])}</span></div>
+      <div style="min-width:0"><div class="name">${esc(a.name)}</div><div class="badges">${badges.join('')}</div></div>
+    </div>
+    <div class="desc">${esc(a.description)}</div>
+    ${prog}
+    <div class="actions"></div>`;
+  // Icon: hide the fallback letter once the image loads.
+  const img = $('img', el); img.addEventListener('load', () => { $('.icon span', el).remove(); });
+
+  const actions = $('.actions', el);
+  const add = (html, cls, fn, href) => {
+    const n = document.createElement(href ? 'a' : 'button');
+    n.className = (href ? 'btn ' : '') + (cls||''); n.innerHTML = html;
+    if (href) { n.href = href; if (href !== '#') { n.target = '_blank'; n.rel = 'noopener'; } } else n.onclick = fn;
+    actions.appendChild(n); return n;
+  };
+
+  add('Launch', 'primary' + (a.active ? '' : ' disabled'), null, a.active ? `/apps/${encodeURIComponent(a.id)}/` : '#');
+  if (ME.admin && a.latest && (!a.active || a.update_available) && !j) {
+    add(a.active ? `Update to v${esc(a.latest.version)}` : 'Install', '', () => installTag(a.id, a.latest.tag));
+  }
+  if (nativeCount) add('Desktop', '', () => showNative(a));
+  if (ME.admin) add('Versions', '', () => showVersions(a.id));
+  return el;
+}
+
+function render(){
+  const only = $('#onlyReady').checked;
+  const grid = $('#grid');
+  const list = APPS.filter(a => !only || a.latest || a.installed.length);
+  grid.innerHTML = '';
+  if (!list.length) { grid.innerHTML = '<div class="empty">Nothing to show yet. If this is the first start, give it a few seconds to check GitHub.</div>'; return; }
+  // Ready apps first, then the rest.
+  const rank = a => a.active ? 0 : a.latest ? 1 : 2;
+  list.sort((x, y) => rank(x) - rank(y) || x.name.localeCompare(y.name)).forEach(a => grid.appendChild(card(a)));
+}
+
+async function refreshApps(){
+  try {
+    APPS = await api('/api/apps');
+    render();
+    $('#stamp').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    if (openDialog) openDialog();
+  } catch (e) { if (e.message !== 'signed out') toast(e.message); }
+}
+
+async function installTag(id, tag, activate=true){
+  try { await api(`/api/apps/${id}/install`, {method:'POST', body:{tag, activate}}); toast('Install started'); }
+  catch (e) { toast(e.message); }
+  refreshApps();
+}
+
+function showNative(a){
+  const groups = {};
+  a.native.forEach(n => (groups[n.os] ||= []).push(n));
+  const order = Object.keys(groups).sort((x, y) => (x === OS ? -1 : 0) - (y === OS ? -1 : 0) || x.localeCompare(y));
+  $('#dlgTitle').textContent = a.name + ' · desktop downloads';
+  $('#dlgBody').innerHTML = order.map(os => `<h4>${OS_LABEL[os] || os}${os === OS ? ' · your system' : ''}</h4><table>` +
+    groups[os].map(n => `<tr><td><a href="${esc(n.url)}" rel="noopener">${esc(n.name)}</a></td><td class="small">${esc(n.arch)}</td><td class="small">${esc(n.kind)}</td><td class="r small">${fmtSize(n.size)}</td></tr>`).join('') + '</table>').join('')
+    + '<p class="small">Downloads come straight from GitHub releases.</p>';
+  openDialog = null; $('#dlg').showModal();
+}
+
+async function showVersions(id){
+  const draw = async () => {
+    const a = APPS.find(x => x.id === id); if (!a) return;
+    let rels = [];
+    try { rels = await api(`/api/apps/${id}/releases`); } catch (e) { $('#dlgBody').innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+    const inst = Object.fromEntries(a.installed.map(i => [i.version, i]));
+    const rows = rels.map(r => {
+      const i = inst[r.version];
+      const status = a.active === r.version ? '<span class="badge ok">active</span>' : i ? '<span class="badge">installed</span>' : r.web ? '' : '<span class="small">no web build</span>';
+      let btns = '';
+      if (a.active === r.version) btns = `<a class="btn" href="/apps/${encodeURIComponent(id)}/" target="_blank">Open</a>`;
+      else if (i) btns = `<button data-act="activate" data-v="${esc(r.version)}">Activate</button> <a class="btn" target="_blank" href="/versions/${encodeURIComponent(id)}/${encodeURIComponent(r.version)}/">Preview</a> <button class="danger" data-act="remove" data-v="${esc(r.version)}">Remove</button>`;
+      else if (r.web) btns = `<button data-act="install" data-tag="${esc(r.tag)}">Install</button>`;
+      return `<tr><td><a href="${esc(r.url)}" rel="noopener" target="_blank">${esc(r.tag)}</a> ${r.prerelease ? '<span class="badge">pre</span>' : ''}</td><td class="small">${fmtDate(r.published_at)}</td><td>${status}</td><td class="r">${btns}</td></tr>`;
+    }).join('');
+    $('#dlgBody').innerHTML = `
+      <div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin:.6rem 0">
+        <label class="sw"><input type="checkbox" id="optAuto" ${a.auto_update ? 'checked' : ''}> Update automatically</label>
+        <label class="sw"><input type="checkbox" id="optPre" ${a.include_prerelease ? 'checked' : ''}> Include pre-releases</label>
+        <button id="optRefresh">Refresh list</button>
+        <span class="small" style="align-self:center">Last checked ${ago(a.last_check)}</span>
+      </div>
+      <table><tr><th>Release</th><th>Published</th><th>Status</th><th></th></tr>${rows || '<tr><td colspan="4" class="small">No releases found.</td></tr>'}</table>`;
+    $('#optAuto').onchange = e => setting(id, {auto_update: e.target.checked});
+    $('#optPre').onchange = e => setting(id, {include_prerelease: e.target.checked});
+    $('#optRefresh').onclick = async () => { try { await api(`/api/apps/${id}/refresh`, {method:'POST'}); } catch (e) { toast(e.message); } refreshApps(); };
+    $('#dlgBody').querySelectorAll('button[data-act]').forEach(b => b.onclick = async () => {
+      const v = b.dataset.v, act = b.dataset.act;
+      try {
+        if (act === 'install') await installTag(id, b.dataset.tag);
+        if (act === 'activate') { await api(`/api/apps/${id}/activate`, {method:'POST', body:{version:v}}); toast('Activated v' + v); }
+        if (act === 'remove') { if (!confirm(`Remove v${v}?`)) return; await api(`/api/apps/${id}/versions/${encodeURIComponent(v)}`, {method:'DELETE'}); }
+      } catch (e) { toast(e.message); }
+      refreshApps();
+    });
+  };
+  const a = APPS.find(x => x.id === id);
+  $('#dlgTitle').textContent = a.name + ' · versions';
+  openDialog = draw; await draw(); $('#dlg').showModal();
+}
+
+async function setting(id, body){ try { await api(`/api/apps/${id}/settings`, {method:'POST', body}); } catch (e) { toast(e.message); } refreshApps(); }
+
+async function drawAuth(){
+  let a; try { a = await api('/api/auth'); } catch (e) { return; }
+  const f = a.form, t = a.tested;
+  const modeTxt = a.mode === 'oidc' ? 'ON (OpenID Connect)' : a.mode === 'headers' ? 'ON (proxy headers, set by environment)' : 'OFF';
+  const src = {ui:'set in this UI', env:'from environment variables', recovery:'recovery mode (AUTH_RECOVERY)'}[a.source];
+  const v = x => esc(x ?? '');
+  const box = document.createElement('div');
+  box.innerHTML = `
+    <h4>Authentication (SSO)</h4>
+    <p class="small">Status: <b>${modeTxt}</b> · ${src}. Works with Authentik (OAuth2/OpenID provider) and any OIDC provider. Nothing is switched on until a test sign-in with these settings succeeds as an administrator.</p>
+    <p class="small">Register this redirect URI at the provider: <code id="ru">${v(a.redirect_uri)}</code></p>
+    <div class="fld"><label>Public URL of this site</label><input id="aPub" value="${v(f.public_url || location.origin)}"></div>
+    <div class="fld"><label>Issuer (Authentik: Applications → Providers → your provider → OpenID Configuration Issuer, e.g. https://auth.example.com/application/o/craft-hub/)</label><input id="aIss" value="${v(f.oidc_issuer)}" placeholder="https://auth.example.com/application/o/craft-hub/"></div>
+    <div class="fld"><label>Client ID</label><input id="aCid" value="${v(f.oidc_client_id)}"></div>
+    <div class="fld"><label>Client secret</label><input id="aSec" type="password" autocomplete="off" placeholder="${f.secret_set ? '•••••••• (leave blank to keep)' : ''}"></div>
+    <div class="fld"><label>Admin groups (comma separated; empty = every user is an admin)</label><input id="aAdm" value="${v((f.admin_groups||[]).join(', '))}" placeholder="craft-admins"></div>
+    <div class="fld"><label>Allowed groups (comma separated; empty = any authenticated user)</label><input id="aAll" value="${v((f.allowed_groups||[]).join(', '))}" placeholder="craft-users"></div>
+    <div class="fld"><label>Scopes · Groups claim</label><div style="display:flex;gap:.5rem"><input id="aScp" value="${v(f.oidc_scopes || 'openid profile email')}"><input id="aGrp" value="${v(f.groups_claim || 'groups')}"></div></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem">
+      <button id="aSave">1. Save</button>
+      <button id="aTest" ${a.has_draft ? '' : 'disabled'}>2. Test sign-in</button>
+      <button class="primary" id="aEnable" ${t && t.ok ? '' : 'disabled'}>3. Enable SSO</button>
+      ${a.mode !== 'none' ? '<button class="danger" id="aOff">Turn authentication off</button>' : ''}
+      <button id="aRefresh">Refresh status</button>
+    </div>
+    <p class="small" id="aTestInfo">${t ? (t.ok ? `Test passed: ${v(t.name)} (admin).` : t.stale ? 'Last test is outdated; test again.' : `Test signed in as ${v(t.name)} but not as an admin (groups: ${v((t.groups||[]).join(', ') || 'none')}).`) : 'No test sign-in yet.'}</p>`;
+  $('#dlgBody').appendChild(box);
+  const lst = x => x.split(',').map(s => s.trim()).filter(Boolean);
+  const call = async (path, body, msg) => { try { await api(path, {method:'POST', body}); if (msg) toast(msg); } catch (e) { toast(e.message, 8000); } window._settingsDraw(); };
+  $('#aSave').onclick = () => call('/api/auth/draft', {public_url:$('#aPub').value, oidc_issuer:$('#aIss').value, oidc_client_id:$('#aCid').value, oidc_client_secret:$('#aSec').value, oidc_scopes:$('#aScp').value, groups_claim:$('#aGrp').value, admin_groups:lst($('#aAdm').value), allowed_groups:lst($('#aAll').value)}, 'Saved. Now test the sign-in.');
+  $('#aTest').onclick = () => { window.open('/auth/test', '_blank'); toast('Finish signing in in the new tab, then press Refresh status.', 8000); };
+  $('#aRefresh').onclick = () => window._settingsDraw();
+  $('#aEnable').onclick = async () => { try { await api('/api/auth/enable', {method:'POST'}); toast('SSO enabled. Signing you in…'); setTimeout(() => location.reload(), 800); } catch (e) { toast(e.message, 8000); window._settingsDraw(); } };
+  const off = $('#aOff'); if (off) off.onclick = () => { if (confirm('Turn authentication off? Anyone who can reach this site will be an administrator.')) call('/api/auth/disable', {}, 'Authentication is off'); };
+}
+
+async function showSettings(){
+  const draw = async () => {
+    let s; try { s = await api('/api/settings'); } catch (e) { $('#dlgBody').innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+    const src = {ui:'set here', env:'set by the GITHUB_TOKEN environment variable', none:'not set'}[s.github_token_source];
+    $('#dlgBody').innerHTML = `
+      <h4>GitHub token</h4>
+      <p class="small">Optional. Raises the GitHub API rate limit (60/h anonymous) and lets you track private repos. A fine-grained token with read-only access to public repositories is enough. Status: <b>${src}</b>.</p>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <input id="tokIn" type="password" autocomplete="off" placeholder="${s.github_token_set ? '•••••••• (enter a new one to replace)' : 'ghp_… or github_pat_…'}" style="flex:1;min-width:14rem;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:.5rem .7rem">
+        <button class="primary" id="tokSave">Save</button>
+        ${s.github_token_source === 'ui' ? '<button class="danger" id="tokClear">Remove</button>' : ''}
+      </div>
+      <p class="small">Stored in the data volume (file mode 600) and never shown again.</p>`;
+    const save = async v => { try { await api('/api/settings', {method:'POST', body:{github_token:v}}); toast(v ? 'Token saved' : 'Token removed'); } catch (e) { toast(e.message); } draw(); };
+    $('#tokSave').onclick = () => { const v = $('#tokIn').value.trim(); if (v) save(v); };
+    if ($('#tokClear')) $('#tokClear').onclick = () => save('');
+    await drawAuth();
+  };
+  window._settingsDraw = draw;
+  $('#dlgTitle').textContent = 'Settings';
+  openDialog = null; await draw(); $('#dlg').showModal();
+}
+$('#settingsBtn').onclick = showSettings;
+$('#openBannerLink').onclick = e => { e.preventDefault(); showSettings(); };
+window.addEventListener('focus', () => { if ($('#dlg').open && window._settingsDraw && $('#dlgTitle').textContent === 'Settings' && document.activeElement && document.activeElement.tagName !== 'INPUT') window._settingsDraw(); });
+$('#dlgClose').onclick = () => $('#dlg').close();
+$('#dlg').addEventListener('close', () => { openDialog = null; });
+$('#onlyReady').onchange = render;
+$('#checkAll').onclick = async () => { try { await api('/api/check', {method:'POST'}); toast('Checking GitHub for new releases…'); } catch (e) { toast(e.message); } setTimeout(refreshApps, 2500); };
+
+(async function boot(){
+  try {
+    ME = await api('/api/me');
+    $('#who').textContent = ME.name + (ME.admin ? ' · admin' : '');
+    if (ME.auth_mode === 'none') $('#openBanner').style.display = '';
+    if (ME.admin) { $('#checkAll').style.display = ''; $('#settingsBtn').style.display = ''; }
+    if (ME.can_sign_out) $('#signout').style.display = '';
+  } catch (e) { return; }
+  await refreshApps();
+  (async function loop(){
+    const busy = APPS.some(a => a.job && (a.job.state === 'downloading' || a.job.state === 'extracting'));
+    await new Promise(r => setTimeout(r, busy ? 1200 : 15000));
+    if (!document.hidden && !$('#dlg').open || busy) await refreshApps();
+    loop();
+  })();
+})();
+</script>
+</body>
+</html>
