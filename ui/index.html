@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CraftHub</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%235aa2ff'/%3E%3Cpath d='M41 21.5a15.5 15.5 0 1 0 0 21' fill='none' stroke='%2306101f' stroke-width='7.5' stroke-linecap='round'/%3E%3Ccircle cx='47' cy='32' r='5' fill='%2306101f'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#0f1115">
 <style>
 :root{
   --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a; --text:#e6e8ee; --muted:#9aa3b2;
@@ -37,6 +39,9 @@ main{max-width:1200px;margin:0 auto;padding:1.5rem}
 .icon{width:48px;height:48px;border-radius:11px;background:var(--panel2);display:grid;place-items:center;font-weight:700;color:var(--accent);overflow:hidden;flex:none;font-size:1.25rem}
 .icon img{width:100%;height:100%;object-fit:cover}
 .name{font-weight:650;font-size:1.05rem}
+.gh{margin-left:auto;flex:none;align-self:flex-start;width:30px;height:30px;padding:0;display:grid;place-items:center;border-radius:8px;color:var(--muted);border:1px solid var(--line);background:var(--panel2)}
+.gh:hover{color:var(--text);border-color:var(--muted)}
+.gh svg{width:16px;height:16px;fill:currentColor}
 .desc{color:var(--muted);font-size:.88rem;min-height:2.5em}
 .badges{display:flex;gap:.4rem;flex-wrap:wrap}
 .badge{font-size:.75rem;padding:.12rem .5rem;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
@@ -74,7 +79,8 @@ h4{margin:1rem 0 .3rem;font-size:.85rem;color:var(--muted);text-transform:upperc
   <div class="grow"></div>
   <span class="chip" id="who"></span>
   <button id="settingsBtn" style="display:none">Settings</button>
-  <button id="checkAll" style="display:none" title="Look for new releases of every app">Check for updates</button>
+  <button id="aboutBtn">About</button>
+  <button id="checkAll" style="display:none" title="New releases are also checked and installed automatically">Check now</button>
   <a class="btn" id="signout" href="/auth/logout" style="display:none">Sign out</a>
 </header>
 
@@ -141,10 +147,14 @@ function card(a){
   else if (a.last_error) prog = `<div class="err">${esc(a.last_error)}</div>`;
 
   const nativeCount = a.native.length;
+  const ghLink = /^[\w.-]+\/[\w.-]+$/.test(a.repo || '')
+    ? `<a class="gh" href="https://github.com/${esc(a.repo)}" target="_blank" rel="noopener" title="View ${esc(a.name)} on GitHub" aria-label="View ${esc(a.name)} on GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>`
+    : '';
   el.innerHTML = `
     <div class="top">
       <div class="icon"><img alt="" src="${esc(a.icon)}" onerror="this.remove()"><span>${esc(a.name[0])}</span></div>
       <div style="min-width:0"><div class="name">${esc(a.name)}</div><div class="badges">${badges.join('')}</div></div>
+      ${ghLink}
     </div>
     <div class="desc">${esc(a.description)}</div>
     ${prog}
@@ -285,6 +295,13 @@ async function drawAuth(){
   const off = $('#aOff'); if (off) off.onclick = () => { if (confirm('Turn authentication off? Anyone who can reach this site will be an administrator.')) call('/api/auth/disable', {}, 'Authentication is off'); };
 }
 
+async function showAbout(){
+  $('#dlgTitle').textContent = 'About';
+  $('#dlgBody').innerHTML = `<p>CraftHub – a simple app manager.</p><p><a href="https://github.com/MegaTheLEGEND/CraftHub" target="_blank" rel="noopener">GitHub Repository</a></p>`;
+  openDialog = null;
+  $('#dlg').showModal();
+}
+
 async function showSettings(){
   const draw = async () => {
     let s; try { s = await api('/api/settings'); } catch (e) { $('#dlgBody').innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
@@ -305,14 +322,25 @@ async function showSettings(){
   };
   window._settingsDraw = draw;
   $('#dlgTitle').textContent = 'Settings';
-  openDialog = null; await draw(); $('#dlg').showModal();
+  openDialog = null; draw().then(() => $('#dlg').showModal());
 }
 $('#settingsBtn').onclick = showSettings;
+$('#aboutBtn').onclick = showAbout;
 $('#openBannerLink').onclick = e => { e.preventDefault(); showSettings(); };
 window.addEventListener('focus', () => { if ($('#dlg').open && window._settingsDraw && $('#dlgTitle').textContent === 'Settings' && document.activeElement && document.activeElement.tagName !== 'INPUT') window._settingsDraw(); });
 $('#dlgClose').onclick = () => $('#dlg').close();
 $('#dlg').addEventListener('close', () => { openDialog = null; });
 $('#onlyReady').onchange = render;
+const STALE_SECS = 300;
+async function autoCheck(){
+  // The server already checks on a timer; this just makes sure what you see is fresh when you open or return to the page.
+  if (!ME.admin || !APPS.length) return;
+  const newest = Math.max(0, ...APPS.map(a => a.last_check || 0));
+  if (Date.now()/1000 - newest < STALE_SECS) return;
+  try { await api('/api/check', {method:'POST'}); } catch (e) { return; }
+  setTimeout(refreshApps, 2500); setTimeout(refreshApps, 8000);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshApps().then(autoCheck); } });
 $('#checkAll').onclick = async () => { try { await api('/api/check', {method:'POST'}); toast('Checking GitHub for new releases…'); } catch (e) { toast(e.message); } setTimeout(refreshApps, 2500); };
 
 (async function boot(){
@@ -324,6 +352,8 @@ $('#checkAll').onclick = async () => { try { await api('/api/check', {method:'PO
     if (ME.can_sign_out) $('#signout').style.display = '';
   } catch (e) { return; }
   await refreshApps();
+  if (ME.update_interval_minutes) $('#stamp').title = 'Checks for new releases and installs them automatically every ' + ME.update_interval_minutes + ' min';
+  autoCheck();
   (async function loop(){
     const busy = APPS.some(a => a.job && (a.job.state === 'downloading' || a.job.state === 'extracting'));
     await new Promise(r => setTimeout(r, busy ? 1200 : 15000));

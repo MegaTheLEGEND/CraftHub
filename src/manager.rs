@@ -382,17 +382,18 @@ pub async fn check_all(st: &AppState) {
     }
 }
 
-/// Background loop: first check shortly after boot, then every UPDATE_INTERVAL_HOURS.
+/// Background loop: first check shortly after boot, then every UPDATE_INTERVAL_MINUTES (default 30).
+/// New releases are installed automatically unless AUTO_INSTALL is off or the app's own switch is off.
 pub async fn updater(st: AppState) {
-    let hours = st.cfg.update_interval_hours;
-    if hours == 0 {
-        tracing::info!("automatic update checks disabled (UPDATE_INTERVAL_HOURS=0)");
+    let minutes = st.cfg.update_interval_minutes;
+    if minutes == 0 {
+        tracing::info!("automatic update checks disabled (UPDATE_INTERVAL_MINUTES=0)");
         return;
     }
     tokio::time::sleep(Duration::from_secs(3)).await;
     loop {
         check_all(&st).await;
-        tokio::time::sleep(Duration::from_secs(hours * 3600)).await;
+        tokio::time::sleep(Duration::from_secs(minutes * 60)).await;
     }
 }
 

@@ -9,7 +9,7 @@ services:
       PUBLIC_URL: https://craft.example.com          # exactly what the browser sees
       # Authentication starts OFF. Configure Authentik in the UI: Settings -> Authentication.
       # (Or set OIDC_ISSUER / OIDC_CLIENT_ID / OIDC_CLIENT_SECRET here to enable it at boot.)
-      UPDATE_INTERVAL_HOURS: "6"
+      UPDATE_INTERVAL_MINUTES: "30"
       AUTO_INSTALL: "true"
       KEEP_VERSIONS: "3"
       INCLUDE_PRERELEASE: "true"                     # photocraft currently only ships rc builds

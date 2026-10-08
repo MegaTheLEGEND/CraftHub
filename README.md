@@ -1,7 +1,5 @@
 # CraftHub
 
-<img width="1920" height="988" alt="image" src="https://github.com/user-attachments/assets/61bab7b8-0fe5-4383-aef2-7d1355c2cb81" />
-
 A self-hosted "Creative Cloud"-style launcher for the open-source
 [storytold](https://github.com/storytold) Crafting Apps (PhotoCraft, VectorCraft, FilmCraft, LightCraft, …).
 One Rust binary in one small Docker image that:
@@ -70,7 +68,7 @@ proxy in that mode.
 | `SESSION_SECRET` | auto | Optional (≥32 chars). If unset, one is generated once and kept in `/data/session.key` |
 | `SESSION_HOURS` | `12` | Session lifetime |
 | `GITHUB_TOKEN` | | Optional fallback. Normally set it in the UI: **Settings → GitHub token** (admins; stored in `/data/settings.json`, mode 600, and overrides this variable) |
-| `UPDATE_INTERVAL_HOURS` | `6` | `0` disables background checks |
+| `UPDATE_INTERVAL_MINUTES` | `30` | How often CraftHub checks GitHub for new releases (and installs them if `AUTO_INSTALL` is on). `0` disables background checks. `UPDATE_INTERVAL_HOURS` is still honoured if set |
 | `AUTO_INSTALL` | `true` | Install the newest release automatically (per-app switch in the UI) |
 | `KEEP_VERSIONS` | `3` | Versions kept per app (the active one always stays) |
 | `INCLUDE_PRERELEASE` | `true` | Follow pre-releases (PhotoCraft currently ships `-rc` tags) |

@@ -39,7 +39,7 @@ pub struct Config {
 
     pub github_token: Option<String>,
     pub github_api: String,
-    pub update_interval_hours: u64,
+    pub update_interval_minutes: u64,
     pub auto_install: bool,
     pub keep_versions: usize,
     pub include_prerelease: bool,
@@ -105,7 +105,11 @@ impl Config {
             session_hours: num("SESSION_HOURS", 12u64)?,
             github_token: opt("GITHUB_TOKEN"),
             github_api: opt("GITHUB_API_URL").unwrap_or_else(|| "https://api.github.com".into()),
-            update_interval_hours: num("UPDATE_INTERVAL_HOURS", 6u64)?,
+            update_interval_minutes: match (opt("UPDATE_INTERVAL_MINUTES"), opt("UPDATE_INTERVAL_HOURS")) {
+                (Some(_), _) => num("UPDATE_INTERVAL_MINUTES", 30u64)?,
+                (None, Some(_)) => num("UPDATE_INTERVAL_HOURS", 1u64)?.saturating_mul(60),
+                (None, None) => 30,
+            },
             auto_install: flag("AUTO_INSTALL", true),
             keep_versions: num("KEEP_VERSIONS", 3usize)?.max(1),
             include_prerelease: flag("INCLUDE_PRERELEASE", true),
