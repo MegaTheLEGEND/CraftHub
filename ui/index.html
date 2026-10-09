@@ -8,13 +8,13 @@
 <meta name="theme-color" content="#0f1115">
 <style>
 :root{
-  --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a; --text:#e6e8ee; --muted:#9aa3b2;
-  --accent:#5aa2ff; --accent-ink:#06101f; --ok:#5fd39a; --warn:#f2c25b; --bad:#ff6b6b;
-  color-scheme: dark;
+  --bg:#f5f6f8; --panel:#ffffff; --panel2:#f0f2f5; --line:#dde1e8; --text:#1b1e25; --muted:#5d6676;
+  --accent:#1f6feb; --accent-ink:#ffffff; --ok:#1b8a5a; --warn:#9a6b00; --bad:#c43c3c;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: light){
-  :root{ --bg:#f5f6f8; --panel:#ffffff; --panel2:#f0f2f5; --line:#dde1e8; --text:#1b1e25; --muted:#5d6676;
-         --accent:#1f6feb; --accent-ink:#ffffff; --ok:#1b8a5a; --warn:#9a6b00; --bad:#c43c3c; color-scheme: light; }
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a; --text:#e6e8ee; --muted:#9aa3b2;
+         --accent:#5aa2ff; --accent-ink:#06101f; --ok:#5fd39a; --warn:#f2c25b; --bad:#ff6b6b; color-scheme: dark; }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -71,6 +71,32 @@ h4{margin:1rem 0 .3rem;font-size:.85rem;color:var(--muted);text-transform:upperc
 .banner{background:color-mix(in srgb,var(--warn) 16%,var(--panel));border:1px solid color-mix(in srgb,var(--warn) 50%,var(--line));border-radius:10px;padding:.6rem .9rem;margin-bottom:1rem;font-size:.9rem}
 .fld{display:grid;gap:.2rem;margin:.5rem 0}.fld label{font-size:.8rem;color:var(--muted)}
 .fld input{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:.5rem .7rem;width:100%;box-sizing:border-box}
+/* Liquid Glass theme */
+body.theme-glass {
+  --bg: rgba(255,255,255,0.2);
+  --panel: rgba(255,255,255,0.15);
+  --panel2: rgba(255,255,255,0.12);
+  --line: rgba(255,255,255,0.3);
+  --text: #000000;
+  --muted: #555555;
+  --accent: #5aa2ff;
+  --accent-ink: #000000;
+  color-scheme: light;
+}
+.glass {
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+/* Light & Dark overrides for manual theme switching */
+body[data-theme="light"] {
+  --bg:#f5f6f8; --panel:#ffffff; --panel2:#f0f2f5; --line:#dde1e8; --text:#1b1e25; --muted:#5d6676;
+  --accent:#1f6feb; --accent-ink:#ffffff; --ok:#1b8a5a; --warn:#9a6b00; --bad:#c43c3c; color-scheme: light;
+}
+body[data-theme="dark"] {
+  --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a; --text:#e6e8ee; --muted:#9aa3b2;
+  --accent:#5aa2ff; --accent-ink:#06101f; --ok:#5fd39a; --warn:#f2c25b; --bad:#ff6b6b; color-scheme: dark;
+}
 </style>
 </head>
 <body>
@@ -326,7 +352,7 @@ async function showSettings(){
 }
 $('#settingsBtn').onclick = showSettings;
 $('#aboutBtn').onclick = showAbout;
-$('#openBannerLink').onclick = e => { e.preventDefault(); showSettings(); };
+
 window.addEventListener('focus', () => { if ($('#dlg').open && window._settingsDraw && $('#dlgTitle').textContent === 'Settings' && document.activeElement && document.activeElement.tagName !== 'INPUT') window._settingsDraw(); });
 $('#dlgClose').onclick = () => $('#dlg').close();
 $('#dlg').addEventListener('close', () => { openDialog = null; });
