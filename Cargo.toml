@@ -1,6 +1,6 @@
 [package]
 name = "craft-hub"
-version = "0.1.0"
+version = "0.1.5"
 edition = "2021"
 description = "Self-hosted launcher and version manager for the ArtCraft 'Crafting Apps' web builds, with Authentik/OIDC SSO"
 readme = "README.md"

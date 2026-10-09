@@ -135,6 +135,7 @@ async fn main() -> Result<()> {
         .route("/api/auth/disable", post(api::disable_auth))
         .route("/auth/test", get(auth::login_test))
         .route("/api/apps/{id}/refresh", post(api::refresh))
+        .route("/api/apps/{id}/icon", get(api::icon))
         .route("/api/apps/{id}/releases", get(api::releases))
         .route("/api/apps/{id}/install", post(api::install))
         .route("/api/apps/{id}/activate", post(api::activate))

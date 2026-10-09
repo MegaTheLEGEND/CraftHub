@@ -132,6 +132,8 @@ impl Job {
 pub struct CachedReleases {
     pub fetched: Instant,
     pub list: Vec<Release>,
+    /// ETag of the last response; lets us re-check with a conditional request (a 304 is free against the rate limit).
+    pub etag: Option<String>,
 }
 
 pub struct OidcMeta {

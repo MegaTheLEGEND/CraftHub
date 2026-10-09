@@ -165,8 +165,13 @@ pub fn pick_latest(list: &[Release], include_prerelease: bool) -> Option<&Releas
     list.iter().find(|r| r.web.is_some() && (include_prerelease || !r.prerelease))
 }
 
+enum Fetched {
+    NotModified,
+    Fresh(Vec<Release>, Option<String>),
+}
+
 impl Shared {
-    async fn fetch_releases(&self, def: &AppDef) -> Result<Vec<Release>> {
+    async fn fetch_releases(&self, def: &AppDef, etag: Option<&str>) -> Result<Fetched> {
         let url = format!(
             "{}/repos/{}/releases?per_page=30",
             self.cfg.github_api.trim_end_matches('/'),
@@ -177,44 +182,67 @@ impl Shared {
             .get(&url)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28");
+        if let Some(e) = etag {
+            rq = rq.header("If-None-Match", e);
+        }
         if let Some(t) = self.github_token() {
             rq = rq.bearer_auth(t);
         }
         let resp = rq.send().await.map_err(|e| anyhow!("GitHub request failed: {e}"))?;
         let status = resp.status();
+        if let Some(rem) = resp.headers().get("x-ratelimit-remaining").and_then(|v| v.to_str().ok()) {
+            tracing::debug!(repo = %def.repo, remaining = rem, "github rate limit");
+            if rem == "0" {
+                tracing::warn!("GitHub API rate limit exhausted; add a GitHub token in Settings");
+            }
+        }
+        if status.as_u16() == 304 {
+            return Ok(Fetched::NotModified);
+        }
         if status.as_u16() == 404 {
-            return Ok(vec![]);
+            return Ok(Fetched::Fresh(vec![], None));
         }
         if status.as_u16() == 403 || status.as_u16() == 429 {
-            bail!("GitHub API refused the request ({status}); you are probably rate limited, set GITHUB_TOKEN");
+            bail!("GitHub API refused the request ({status}); you are probably rate limited, add a GitHub token in Settings");
         }
         if !status.is_success() {
             bail!("GitHub API returned {status} for {}", def.repo);
         }
+        let new_etag = resp.headers().get("etag").and_then(|v| v.to_str().ok()).map(str::to_string);
         let gh: Vec<GhRelease> = resp.json().await.map_err(|e| anyhow!("bad GitHub response: {e}"))?;
-        Ok(gh
-            .into_iter()
-            .filter(|r| !r.draft)
-            .map(|r| to_release(r, &def.web_asset_contains))
-            .collect())
+        Ok(Fetched::Fresh(
+            gh.into_iter()
+                .filter(|r| !r.draft)
+                .map(|r| to_release(r, &def.web_asset_contains))
+                .collect(),
+            new_etag,
+        ))
     }
 
-    /// Releases for an app, cached for ten minutes unless `force`.
+    /// Releases for an app. Served from the in-memory cache for ten minutes unless `force`; after that
+    /// GitHub is asked with a conditional request. This runs on the server only: browsers never contact the GitHub API.
     pub async fn releases(&self, id: &str, force: bool) -> Result<Vec<Release>> {
         let def = self.app_def(id).ok_or_else(|| anyhow!("unknown app '{id}'"))?.clone();
-        if !force {
+        let (prev_list, prev_etag) = {
             let cache = self.releases.lock().await;
-            if let Some(c) = cache.get(id) {
-                if c.fetched.elapsed() < CACHE_TTL {
-                    return Ok(c.list.clone());
+            match cache.get(id) {
+                Some(c) => {
+                    if !force && c.fetched.elapsed() < CACHE_TTL {
+                        return Ok(c.list.clone());
+                    }
+                    (Some(c.list.clone()), c.etag.clone())
                 }
+                None => (None, None),
             }
-        }
-        let list = self.fetch_releases(&def).await?;
+        };
+        let (list, etag) = match self.fetch_releases(&def, prev_etag.as_deref().filter(|_| prev_list.is_some())).await? {
+            Fetched::NotModified => (prev_list.unwrap_or_default(), prev_etag),
+            Fetched::Fresh(list, etag) => (list, etag),
+        };
         self.releases
             .lock()
             .await
-            .insert(id.to_string(), CachedReleases { fetched: Instant::now(), list: list.clone() });
+            .insert(id.to_string(), CachedReleases { fetched: Instant::now(), list: list.clone(), etag });
         Ok(list)
     }
 

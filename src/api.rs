@@ -80,12 +80,8 @@ async fn app_view(st: &AppState, id: &str) -> Option<AppView> {
         name: def.name.clone(),
         description: def.description.clone(),
         repo: def.repo.clone(),
-        icon: def.icon.clone().unwrap_or_else(|| {
-            format!(
-                "https://raw.githubusercontent.com/{}/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.{}.png",
-                def.repo, def.id
-            )
-        }),
+        // Served (and cached) by this server so browsers never contact GitHub for icons.
+        icon: format!("/api/apps/{}/icon", def.id),
         active: rec.active.clone(),
         installed: rec.installed.clone(),
         auto_update: rec.auto_update,
@@ -525,4 +521,48 @@ pub async fn disable_auth(State(st): State<AppState>, Extension(user): Extension
     st.set_auth(AuthCfg::from_saved(&st.cfg, &off));
     tracing::warn!("authentication disabled from the UI");
     Json(auth_view(&st)).into_response()
+}
+
+/// Icon for an app, fetched once by the server and cached on disk; failures are remembered for a day.
+pub async fn icon(State(st): State<AppState>, Path(id): Path<String>) -> Response {
+    let Some(def) = st.app_def(&id).cloned() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let dir = st.cfg.data_dir.join("icons");
+    let file = dir.join(format!("{id}.png"));
+    let miss = dir.join(format!("{id}.none"));
+    let headers = [
+        (axum::http::header::CONTENT_TYPE, "image/png"),
+        (axum::http::header::CACHE_CONTROL, "private, max-age=86400"),
+    ];
+    if let Ok(bytes) = tokio::fs::read(&file).await {
+        return (headers, bytes).into_response();
+    }
+    if let Ok(meta) = tokio::fs::metadata(&miss).await {
+        let fresh = meta.modified().ok().and_then(|m| m.elapsed().ok()).map(|e| e.as_secs() < 86400).unwrap_or(false);
+        if fresh {
+            return (StatusCode::NOT_FOUND, [(axum::http::header::CACHE_CONTROL, "private, max-age=3600")]).into_response();
+        }
+    }
+    let url = def.icon.clone().unwrap_or_else(|| {
+        format!(
+            "https://raw.githubusercontent.com/{}/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.{}.png",
+            def.repo, def.id
+        )
+    });
+    let _ = tokio::fs::create_dir_all(&dir).await;
+    let got = match st.http.get(&url).send().await.and_then(|r| r.error_for_status()) {
+        Ok(r) => r.bytes().await.ok().filter(|b| b.len() < 512 * 1024 && b.starts_with(b"\x89PNG")),
+        Err(_) => None,
+    };
+    match got {
+        Some(bytes) => {
+            let _ = tokio::fs::write(&file, &bytes).await;
+            (headers, bytes.to_vec()).into_response()
+        }
+        None => {
+            let _ = tokio::fs::write(&miss, b"").await;
+            (StatusCode::NOT_FOUND, [(axum::http::header::CACHE_CONTROL, "private, max-age=3600")]).into_response()
+        }
+    }
 }
