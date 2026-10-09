@@ -21,6 +21,7 @@ body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-a
 header{display:flex;align-items:center;gap:1rem;padding:.9rem 1.5rem;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
 .brand{font-weight:700;letter-spacing:.02em;font-size:1.15rem}
 .brand b{color:var(--accent)}
+.ver{font-size:.75rem;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:.05rem .5rem;margin-left:.5rem;align-self:center}
 .grow{flex:1}
 .chip{color:var(--muted);font-size:.85rem}
 button,.btn{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:.45rem .8rem;border-radius:8px;text-decoration:none;display:inline-block}
@@ -101,7 +102,7 @@ body[data-theme="dark"] {
 </head>
 <body>
 <header>
-  <div class="brand">Craft<b>Hub</b></div>
+  <div class="brand">Craft<b>Hub</b></div><span class="ver" id="ver" title="CraftHub version"></span>
   <div class="grow"></div>
   <span class="chip" id="who"></span>
   <button id="settingsBtn" style="display:none">Settings</button>
@@ -372,6 +373,7 @@ $('#checkAll').onclick = async () => { try { await api('/api/check', {method:'PO
 (async function boot(){
   try {
     ME = await api('/api/me');
+    if (ME.version) $('#ver').textContent = 'v' + ME.version;
     $('#who').textContent = ME.name + (ME.admin ? ' · admin' : '');
     if (ME.auth_mode === 'none') $('#openBanner').style.display = '';
     if (ME.admin) { $('#checkAll').style.display = ''; $('#settingsBtn').style.display = ''; }

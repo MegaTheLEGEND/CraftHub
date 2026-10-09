@@ -113,6 +113,7 @@ pub async fn me(State(st): State<AppState>, Extension(user): Extension<SessionUs
         "admin": user.admin,
         "can_sign_out": st.auth().mode != AuthMode::None,
         "update_interval_minutes": st.cfg.update_interval_minutes,
+        "version": env!("CARGO_PKG_VERSION"),
         "auth_mode": match st.auth().mode { AuthMode::Oidc => "oidc", AuthMode::Headers => "headers", AuthMode::None => "none" },
     }))
 }
