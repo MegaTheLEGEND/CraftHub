@@ -382,6 +382,7 @@ fn auth_view(st: &AppState) -> serde_json::Value {
         "source": if st.cfg.auth_recovery { "recovery" } else if saved.is_some() { "ui" } else { "env" },
         "redirect_uri": format!("{}/auth/callback", if form.public_url.is_empty() { &a.public_url } else { &form.public_url }),
         "has_draft": draft.is_some(),
+        "active": { "admin_groups": a.admin_groups, "allowed_groups": a.allowed_groups },
         "form": {
             "public_url": form.public_url,
             "oidc_issuer": form.oidc_issuer,

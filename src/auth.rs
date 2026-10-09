@@ -28,6 +28,8 @@ pub struct SessionUser {
     pub name: String,
     pub email: String,
     pub admin: bool,
+    #[serde(default)]
+    pub groups: Vec<String>,
     pub exp: u64,
 }
 
@@ -116,11 +118,17 @@ fn parse_groups(v: Option<&Value>) -> Vec<String> {
 // Middleware
 // ---------------------------------------------------------------------------
 
-fn user_from_cookie(st: &AppState, headers: &HeaderMap) -> Option<SessionUser> {
+fn user_from_cookie(st: &AppState, a: &AuthCfg, headers: &HeaderMap) -> Option<SessionUser> {
     let jar = PrivateCookieJar::from_headers(headers, st.key.clone());
     let raw = jar.get(SESSION_COOKIE)?;
-    let user: SessionUser = serde_json::from_str(raw.value()).ok()?;
-    (user.exp > now()).then_some(user)
+    let mut user: SessionUser = serde_json::from_str(raw.value()).ok()?;
+    if user.exp <= now() {
+        return None;
+    }
+    // Re-check the role against the *current* group settings, so changing admin/allowed groups
+    // takes effect immediately instead of when the session cookie expires.
+    user.admin = evaluate(a, &user.groups)?;
+    Some(user)
 }
 
 fn user_from_headers(a: &AuthCfg, headers: &HeaderMap) -> Option<SessionUser> {
@@ -133,6 +141,7 @@ fn user_from_headers(a: &AuthCfg, headers: &HeaderMap) -> Option<SessionUser> {
         name,
         email: get(&a.header_email).unwrap_or_default(),
         admin,
+        groups,
         exp: u64::MAX,
     })
 }
@@ -145,10 +154,11 @@ pub async fn require_auth(State(st): State<AppState>, mut req: Request, next: Ne
             name: "Local user".into(),
             email: String::new(),
             admin: true,
+            groups: vec![],
             exp: u64::MAX,
         }),
         AuthMode::Headers => user_from_headers(&a, req.headers()),
-        AuthMode::Oidc => user_from_cookie(&st, req.headers()),
+        AuthMode::Oidc => user_from_cookie(&st, &a, req.headers()),
     };
     match user {
         Some(u) => {
@@ -461,6 +471,7 @@ pub async fn callback(
         name: name.unwrap_or_else(|| "Signed-in user".into()),
         email: email.unwrap_or_default(),
         admin,
+        groups: groups.clone(),
         exp: now() + a.session_hours * 3600,
     };
     let cookie = short_cookie(

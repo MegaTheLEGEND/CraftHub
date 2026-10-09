@@ -296,6 +296,7 @@ async function drawAuth(){
   box.innerHTML = `
     <h4>Authentication (SSO)</h4>
     <p class="small">Status: <b>${modeTxt}</b> · ${src}. Works with Authentik (OAuth2/OpenID provider) and any OIDC provider. Nothing is switched on until a test sign-in with these settings succeeds as an administrator.</p>
+    ${a.mode === 'oidc' ? `<p class="small"><b>Live now:</b> admin groups = ${v((a.active.admin_groups||[]).join(', ') || 'none (every user is an admin)')}; allowed groups = ${v((a.active.allowed_groups||[]).join(', ') || 'any signed-in user')}.${a.has_draft ? ' <b>You have saved changes that are not live yet: run Test sign-in, then Enable SSO to apply them.</b>' : ''}</p>` : ''}
     <p class="small">Register this redirect URI at the provider: <code id="ru">${v(a.redirect_uri)}</code></p>
     <div class="fld"><label>Public URL of this site</label><input id="aPub" value="${v(f.public_url || location.origin)}"></div>
     <div class="fld"><label>Issuer (Authentik: Applications → Providers → your provider → OpenID Configuration Issuer, e.g. https://auth.example.com/application/o/craft-hub/)</label><input id="aIss" value="${v(f.oidc_issuer)}" placeholder="https://auth.example.com/application/o/craft-hub/"></div>
