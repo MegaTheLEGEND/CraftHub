@@ -1,41 +1,63 @@
 name: Build & Publish CraftHub Docker Image
 
-# Run on every push to main (or any branch you prefer) and on version tags
 on:
   push:
-    branches: [ main ]          # change if you use a different default branch
+    branches: [ main ]          # every commit to main
+  tags:
+    - 'v*'                       # any tag that starts with v (e.g. v1.2.3)
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
 
     steps:
+      # --------------------------------------------------------------
       # 1️⃣ Checkout the source
+      # --------------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ Set up Docker Buildx (adds caching, multi‑arch support)
+      # --------------------------------------------------------------
+      # 2️⃣ Set up Docker Buildx (caching, multi‑arch)
+      # --------------------------------------------------------------
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # --------------------------------------------------------------
       # 3️⃣ Log in to Docker Hub
+      # --------------------------------------------------------------
       - name: Docker Hub login
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 4️⃣ Build and push the image
-      - name: Build & push Docker image
+      # --------------------------------------------------------------
+      # 4️⃣ Build the image & push the “stable” tags
+      # --------------------------------------------------------------
+      - name: Build & push core tags (latest + sha)
         uses: docker/build-push-action@v5
         with:
-          context: .                # root of the repo (where Dockerfile lives)
+          context: .
           file: Dockerfile
-          push: true                # actually push to Docker Hub
+          push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/crafthub:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/crafthub:${{ github.sha }}
-            # optional: add a version tag when you push a git tag
-            ${{ github.ref_type == 'tag' && format('{0}/crafthub:{1}', secrets.DOCKERHUB_USERNAME, github.ref_name) || '' }}
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/crafthub:cache
           cache-to:   type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/crafthub:cache,mode=max
+
+      # --------------------------------------------------------------
+      # 5️⃣ If this run was triggered by a Git **tag**, also push that tag
+      # --------------------------------------------------------------
+      - name: Push Git‑tag‑based Docker tag
+        if: startsWith(github.ref, 'refs/tags/')   # only runs on tag events
+        env:
+          DOCKER_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/crafthub
+        run: |
+          # The Git tag name (e.g. v1.2.3) is stored in GITHUB_REF_NAME
+          TAG="${GITHUB_REF_NAME}"
+          echo "Tagging image $DOCKER_REPO:$GITHUB_SHA as $DOCKER_REPO:$TAG"
+          docker pull $DOCKER_REPO:$GITHUB_SHA
+          docker tag $DOCKER_REPO:$GITHUB_SHA $DOCKER_REPO:$TAG
+          docker push $DOCKER_REPO:$TAG
