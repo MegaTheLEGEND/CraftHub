@@ -11,6 +11,7 @@ use std::{
     path::{Component, Path, PathBuf},
     time::Duration,
 };
+use zip::ZipArchive;
 use tokio::io::AsyncWriteExt;
 
 const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;

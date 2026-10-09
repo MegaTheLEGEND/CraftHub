@@ -4,7 +4,8 @@ use crate::auth::SessionUser;
 use crate::config::{is_safe_name, AuthCfg, AuthMode, SavedAuth};
 use crate::github::{pick_latest, NativeAsset, Release};
 use crate::manager;
-use crate::state::{fingerprint, now, AppState, Installed, Job};
+use crate::build_info;
+use crate::state::{Installed, Job, AppState, now, fingerprint};
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
@@ -36,6 +37,7 @@ pub struct LatestView {
     prerelease: bool,
     published_at: Option<String>,
     url: String,
+    description: String,
 }
 
 #[derive(Serialize)]
@@ -92,6 +94,7 @@ async fn app_view(st: &AppState, id: &str) -> Option<AppView> {
             prerelease: l.prerelease,
             published_at: l.published_at.clone(),
             url: l.url.clone(),
+            description: l.body.clone().unwrap_or_default(),
         }),
         update_available,
         native,
@@ -108,8 +111,9 @@ pub async fn me(State(st): State<AppState>, Extension(user): Extension<SessionUs
         "email": user.email,
         "admin": user.admin,
         "can_sign_out": st.auth().mode != AuthMode::None,
-        "update_interval_minutes": st.cfg.update_interval_minutes,
         "version": env!("CARGO_PKG_VERSION"),
+        "update_interval_minutes": st.cfg.update_interval_minutes,
+        "build_time": build_info::BUILD_TIME,
         "auth_mode": match st.auth().mode { AuthMode::Oidc => "oidc", AuthMode::Headers => "headers", AuthMode::None => "none" },
     }))
 }

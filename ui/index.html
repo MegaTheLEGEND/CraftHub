@@ -55,6 +55,9 @@ main{max-width:1200px;margin:0 auto;padding:1.5rem}
 .bar.indet>i{width:40%!important;animation:slide 1.1s infinite ease-in-out}
 @keyframes slide{0%{margin-left:-40%}100%{margin-left:100%}}
 .small{font-size:.8rem;color:var(--muted)}
+.release-details{background:none;border:none;padding:0;margin-left:0.2rem;cursor:pointer;color:var(--muted);font-size:.9rem;text-decoration:underline;}
+.hidden{display:none;}
+.release-desc{font-size:.85rem;color:var(--muted);margin-top:.3rem;}
 .err{font-size:.8rem;color:var(--bad);word-break:break-word}
 dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:0;width:min(760px,94vw);max-height:86vh}
 dialog::backdrop{background:rgba(0,0,0,.55)}
@@ -99,6 +102,7 @@ body[data-theme="dark"] {
   --accent:#5aa2ff; --accent-ink:#06101f; --ok:#5fd39a; --warn:#f2c25b; --bad:#ff6b6b; color-scheme: dark;
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 <header>
@@ -130,7 +134,7 @@ let ME = {admin:false}, APPS = [], openDialog = null;
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtSize = n => n > 1048576 ? (n/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(n/1024))+' KB';
-const fmtDate = s => s ? new Date(s).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}) : '';
+const fmtDate = s => s ? new Date(s).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric',hour12:false}) : '';
 const ago = t => { if(!t) return 'never'; const m = Math.round((Date.now()/1000 - t)/60); return m < 1 ? 'just now' : m < 60 ? m+' min ago' : m < 1440 ? Math.round(m/60)+' h ago' : Math.round(m/1440)+' d ago'; };
 
 function toast(msg, ms=4500){ const t=$('#toast'); t.textContent=msg; t.style.display='block'; clearTimeout(toast.h); toast.h=setTimeout(()=>t.style.display='none',ms); }
@@ -149,6 +153,8 @@ async function api(path, opts={}){
 
 const detectOS = () => { const u = navigator.userAgent; if (/Windows/i.test(u)) return 'windows'; if (/Android/i.test(u)) return 'other'; if (/Mac OS X|Macintosh/i.test(u)) return 'macos'; if (/FreeBSD/i.test(u)) return 'freebsd'; if (/Linux|X11/i.test(u)) return 'linux'; return 'other'; };
 const OS = detectOS();
+
+
 const OS_LABEL = {windows:'Windows', macos:'macOS', linux:'Linux', freebsd:'FreeBSD', other:'Other'};
 
 function jobPct(j){ return j && j.total ? Math.min(100, Math.round(100*j.done/j.total)) : 0; }
@@ -184,6 +190,7 @@ function card(a){
       ${ghLink}
     </div>
     <div class="desc">${esc(a.description)}</div>
+    ${a.latest ? `<span class="small">Released ${fmtDate(a.latest.published_at)} <button class="release-details btn" data-id="${a.id}">Details</button></span><div class="release-desc hidden" id="desc-${a.id}">${a.latest.description || ''}</div>` : ''}
     ${prog}
     <div class="actions"></div>`;
   // Icon: hide the fallback letter once the image loads.
@@ -375,6 +382,7 @@ $('#checkAll').onclick = async () => { try { await api('/api/check', {method:'PO
   try {
     ME = await api('/api/me');
     if (ME.version) $('#ver').textContent = 'v' + ME.version;
+    if (ME.build_time) $('#ver').title = 'Built at ' + ME.build_time;
     $('#who').textContent = ME.name + (ME.admin ? ' · admin' : '');
     if (ME.auth_mode === 'none') $('#openBanner').style.display = '';
     if (ME.admin) { $('#checkAll').style.display = ''; $('#settingsBtn').style.display = ''; }
@@ -388,6 +396,18 @@ $('#checkAll').onclick = async () => { try { await api('/api/check', {method:'PO
     await new Promise(r => setTimeout(r, busy ? 1200 : 15000));
     if (!document.hidden && !$('#dlg').open || busy) await refreshApps();
     loop();
+    // Release details popup
+    document.addEventListener('click', e => {
+      if (e.target.matches('.release-details')) {
+        const id = e.target.dataset.id;
+        const desc = document.getElementById(`desc-${id}`);
+        if (desc) {
+          $('#dlgTitle').textContent = 'Release Details';
+          $('#dlgBody').innerHTML = marked.parse(desc.textContent);
+          $('#dlg').showModal();
+        }
+      }
+    });
   })();
 })();
 </script>

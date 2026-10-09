@@ -37,6 +37,7 @@ pub struct Release {
     pub web: Option<WebAsset>,
     pub native: Vec<NativeAsset>,
     pub sums_url: Option<String>,
+    pub body: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -60,6 +61,8 @@ struct GhRelease {
     prerelease: bool,
     #[serde(default)]
     published_at: Option<String>,
+    #[serde(default)]
+    body: Option<String>,
     #[serde(default)]
     html_url: String,
     #[serde(default)]
@@ -154,6 +157,7 @@ fn to_release(r: GhRelease, web_marker: &str) -> Release {
         prerelease: r.prerelease,
         published_at: r.published_at,
         url: r.html_url,
+        body: r.body,
         web,
         native,
         sums_url,

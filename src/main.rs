@@ -5,6 +5,7 @@ mod github;
 mod hosting;
 mod manager;
 mod state;
+mod build_info;
 
 use anyhow::{Context, Result};
 use axum::{
