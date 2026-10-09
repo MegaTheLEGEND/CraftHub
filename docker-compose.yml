@@ -1,6 +1,6 @@
 services:
   craft-hub:
-    build: .
+    image: megathelegend/crafthub:latest
     # image: ghcr.io/you/craft-hub:latest
     restart: unless-stopped
     ports: ["8080:8080"]

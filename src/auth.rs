@@ -51,7 +51,7 @@ impl<E: Into<anyhow::Error>> From<E> for AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        tracing::warn!("request failed: {:#}", self.0);
+        tracing::error!("sign-in failed: {:#}", self.0);
         (StatusCode::BAD_GATEWAY, page("Sign-in problem", &format!("{:#}", self.0), true)).into_response()
     }
 }

@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use axum::{
     http::{header, HeaderValue},
     middleware,
-    response::Html,
+    response::{Html, IntoResponse},
     routing::{delete, get, post},
     Router,
 };
@@ -19,7 +19,7 @@ use config::{AuthMode, Config};
 use state::{AppState, Shared, Store};
 use std::{collections::HashMap, sync::Mutex as StdMutex};
 use tokio::sync::Mutex;
-use tower_http::{set_header::SetResponseHeaderLayer, trace::TraceLayer};
+use tower_http::{catch_panic::CatchPanicLayer, set_header::SetResponseHeaderLayer, trace::TraceLayer};
 use tracing_subscriber::EnvFilter;
 
 async fn ui_index() -> Html<&'static str> {
@@ -164,7 +164,20 @@ async fn main() -> Result<()> {
             header::REFERRER_POLICY,
             HeaderValue::from_static("same-origin"),
         ))
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http())
+        .layer(CatchPanicLayer::custom(|e: Box<dyn std::any::Any + Send>| {
+            let msg = e
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "unknown panic".into());
+            tracing::error!("handler panicked: {msg}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Internal error: {msg}"),
+            )
+                .into_response()
+        }));
 
     let listener = tokio::net::TcpListener::bind(&bind).await.with_context(|| format!("binding {bind}"))?;
     tracing::info!("craft-hub listening on {bind}");
