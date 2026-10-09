@@ -1,10 +1,16 @@
 name: Build & Publish CraftHub Docker Image
 
+# ----------------------------------------------------------------------
+# Trigger on:
+#   • any commit pushed to the main branch
+#   • any tag that matches v*  (e.g. v1.0.0, v2.3.4‑beta)
+# ----------------------------------------------------------------------
 on:
   push:
-    branches: [ main ]          # every commit to main
-  tags:
-    - 'v*'                       # any tag that starts with v (e.g. v1.2.3)
+    branches:
+      - main          # normal development pushes
+    tags:
+      - 'v*'           # version tags
 
 jobs:
   build-and-push:
@@ -12,7 +18,7 @@ jobs:
 
     steps:
       # --------------------------------------------------------------
-      # 1️⃣ Checkout the source
+      # 1️⃣ Checkout the repository
       # --------------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,31 +39,31 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # --------------------------------------------------------------
-      # 4️⃣ Build the image & push the “stable” tags
+      # 4️⃣ Build the image and push the core tags (latest + SHA)
       # --------------------------------------------------------------
-      - name: Build & push core tags (latest + sha)
+      - name: Build & push core tags
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: .                     # repository root – where Dockerfile lives
           file: Dockerfile
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/crafthub:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/crafthub:${{ github.sha }}
+          # optional layer cache (speeds up later builds)
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/crafthub:cache
           cache-to:   type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/crafthub:cache,mode=max
 
       # --------------------------------------------------------------
-      # 5️⃣ If this run was triggered by a Git **tag**, also push that tag
+      # 5️⃣ If this run was triggered by a Git **tag**, push that tag
       # --------------------------------------------------------------
       - name: Push Git‑tag‑based Docker tag
-        if: startsWith(github.ref, 'refs/tags/')   # only runs on tag events
+        if: startsWith(github.ref, 'refs/tags/')   # only on tag events
         env:
           DOCKER_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/crafthub
         run: |
-          # The Git tag name (e.g. v1.2.3) is stored in GITHUB_REF_NAME
-          TAG="${GITHUB_REF_NAME}"
-          echo "Tagging image $DOCKER_REPO:$GITHUB_SHA as $DOCKER_REPO:$TAG"
-          docker pull $DOCKER_REPO:$GITHUB_SHA
-          docker tag $DOCKER_REPO:$GITHUB_SHA $DOCKER_REPO:$TAG
+          TAG="${GITHUB_REF_NAME}"                     # e.g. v1.2.3
+          echo "Tagging image $DOCKER_REPO:${{ github.sha }} as $DOCKER_REPO:$TAG"
+          docker pull $DOCKER_REPO:${{ github.sha }}
+          docker tag $DOCKER_REPO:${{ github.sha }} $DOCKER_REPO:$TAG
           docker push $DOCKER_REPO:$TAG
