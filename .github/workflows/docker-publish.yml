@@ -1,0 +1,41 @@
+name: Build & Publish CraftHub Docker Image
+
+# Run on every push to main (or any branch you prefer) and on version tags
+on:
+  push:
+    branches: [ main ]          # change if you use a different default branch
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout the source
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2️⃣ Set up Docker Buildx (adds caching, multi‑arch support)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 3️⃣ Log in to Docker Hub
+      - name: Docker Hub login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 4️⃣ Build and push the image
+      - name: Build & push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .                # root of the repo (where Dockerfile lives)
+          file: Dockerfile
+          push: true                # actually push to Docker Hub
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/crafthub:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/crafthub:${{ github.sha }}
+            # optional: add a version tag when you push a git tag
+            ${{ github.ref_type == 'tag' && format('{0}/crafthub:{1}', secrets.DOCKERHUB_USERNAME, github.ref_name) || '' }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/crafthub:cache
+          cache-to:   type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/crafthub:cache,mode=max
