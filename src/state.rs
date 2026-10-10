@@ -95,6 +95,17 @@ impl Store {
         self.inner.lock().await.apps.get(id).cloned().unwrap_or_default()
     }
 
+    /// Forget an app's record (used when a custom app is removed).
+    pub async fn remove(&self, id: &str) -> Result<()> {
+        let mut guard = self.inner.lock().await;
+        guard.apps.remove(id);
+        let text = serde_json::to_string_pretty(&*guard)?;
+        let tmp = self.path.with_extension("json.tmp");
+        tokio::fs::write(&tmp, text).await?;
+        tokio::fs::rename(&tmp, &self.path).await?;
+        Ok(())
+    }
+
     /// Mutate one app's record and persist atomically.
     pub async fn update<R>(&self, id: &str, f: impl FnOnce(&mut AppRecord) -> R) -> Result<R> {
         let mut guard = self.inner.lock().await;
@@ -147,7 +158,8 @@ pub struct OidcMeta {
 
 pub struct Shared {
     pub cfg: Config,
-    pub catalog: Vec<AppDef>,
+    /// Built-in apps, apps.toml and apps added from the UI. Changes at runtime when an admin adds or removes one.
+    pub catalog: RwLock<Vec<AppDef>>,
     pub store: Store,
     pub http: reqwest::Client,
     pub jobs: StdMutex<HashMap<String, Job>>,
@@ -178,8 +190,12 @@ impl FromRef<AppState> for Key {
 }
 
 impl Shared {
-    pub fn app_def(&self, id: &str) -> Option<&AppDef> {
-        self.catalog.iter().find(|a| a.id == id)
+    pub fn app_def(&self, id: &str) -> Option<AppDef> {
+        self.catalog.read().unwrap().iter().find(|a| a.id == id).cloned()
+    }
+
+    pub fn catalog_snapshot(&self) -> Vec<AppDef> {
+        self.catalog.read().unwrap().clone()
     }
 
     pub fn auth(&self) -> Arc<AuthCfg> {

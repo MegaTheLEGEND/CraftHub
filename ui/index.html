@@ -109,6 +109,7 @@ body[data-theme="dark"] {
   <div class="brand">Craft<b>Hub</b></div><span class="ver" id="ver" title="CraftHub version"></span>
   <div class="grow"></div>
   <span class="chip" id="who"></span>
+  <button id="addAppBtn" style="display:none" title="Add an app from a GitHub repository">Add app</button>
   <button id="settingsBtn" style="display:none">Settings</button>
   <button id="aboutBtn">About</button>
   <button id="checkAll" style="display:none" title="New releases are also checked and installed automatically">Check now</button>
@@ -170,6 +171,7 @@ function card(a){
   else if (a.checked) badges.push(`<span class="badge">no web build yet</span>`);
   else badges.push(`<span class="badge">checking…</span>`);
   if (a.update_available && a.latest) badges.push(`<span class="badge warn">update: v${esc(a.latest.version)}</span>`);
+  if (a.custom) badges.push(`<span class="badge" title="Added from a GitHub repository">custom</span>`);
   if (a.latest && a.latest.prerelease && !a.active) badges.push(`<span class="badge">pre-release</span>`);
   const act = a.installed.find(i => i.version === a.active);
   if (act && !act.verified) badges.push(`<span class="badge warn" title="No published checksum was available">unverified</span>`);
@@ -272,10 +274,18 @@ async function showVersions(id){
         <button id="optRefresh">Refresh list</button>
         <span class="small" style="align-self:center">Last checked ${ago(a.last_check)}</span>
       </div>
-      <table><tr><th>Release</th><th>Published</th><th>Status</th><th></th></tr>${rows || '<tr><td colspan="4" class="small">No releases found.</td></tr>'}</table>`;
+      <table><tr><th>Release</th><th>Published</th><th>Status</th><th></th></tr>${rows || '<tr><td colspan="4" class="small">No releases found.</td></tr>'}</table>
+      ${a.custom ? `<p style="margin-top:1rem"><button class="danger" id="rmApp">Remove this app</button> <span class="small">Takes it out of the catalog and deletes its installed versions.</span></p>` : ''}`;
     $('#optAuto').onchange = e => setting(id, {auto_update: e.target.checked});
     $('#optPre').onchange = e => setting(id, {include_prerelease: e.target.checked});
     $('#optRefresh').onclick = async () => { try { await api(`/api/apps/${id}/refresh`, {method:'POST'}); } catch (e) { toast(e.message); } refreshApps(); };
+    const rm = $('#rmApp');
+    if (rm) rm.onclick = async () => {
+      if (!confirm(`Remove ${a.name} and all of its installed versions?`)) return;
+      try { await api(`/api/catalog/${encodeURIComponent(id)}`, {method:'DELETE'}); toast('Removed ' + a.name); openDialog = null; $('#dlg').close(); }
+      catch (e) { toast(e.message); }
+      refreshApps();
+    };
     $('#dlgBody').querySelectorAll('button[data-act]').forEach(b => b.onclick = async () => {
       const v = b.dataset.v, act = b.dataset.act;
       try {
@@ -289,6 +299,37 @@ async function showVersions(id){
   const a = APPS.find(x => x.id === id);
   $('#dlgTitle').textContent = a.name + ' · versions';
   openDialog = draw; await draw(); $('#dlg').showModal();
+}
+
+function showAddApp(){
+  $('#dlgTitle').textContent = 'Add app from GitHub';
+  $('#dlgBody').innerHTML = `
+    <p class="small">Add any GitHub repository that publishes releases in the Craft layout: a zip asset such as <code>name-web-1.2.3.zip</code> with an <code>index.html</code> at its root, and optionally a <code>SHA256SUMS.txt</code>. It is listed right away but nothing is downloaded until you press Install.</p>
+    <p class="small">Hosted apps run on the same origin as CraftHub with your session, so only add repositories you trust.</p>
+    <div class="fld"><label>Repository (owner/repo or a GitHub URL)</label><input id="addRepo" placeholder="bherbruck/solvecraft" autocomplete="off" spellcheck="false"></div>
+    <details><summary class="small">Options</summary>
+      <div class="fld"><label>Display name (default: the repository name)</label><input id="addName"></div>
+      <div class="fld"><label>Description (default: the GitHub description)</label><input id="addDesc"></div>
+      <div class="fld"><label>Web build asset name contains</label><input id="addMarker" value="-web-"></div>
+    </details>
+    <div style="display:flex;gap:.5rem;margin-top:.8rem"><button class="primary" id="addGo">Add</button></div>
+    <div class="err hidden" id="addErr" style="margin-top:.6rem"></div>`;
+  const go = async () => {
+    const repo = $('#addRepo').value.trim();
+    if (!repo) return;
+    const btn = $('#addGo'); btn.disabled = true; $('#addErr').classList.add('hidden');
+    try {
+      const a = await api('/api/catalog', {method:'POST', body:{repo, name:$('#addName').value, description:$('#addDesc').value, web_asset_contains:$('#addMarker').value}});
+      toast(`Added ${a.name}. Press Install to download its web build.`, 7000);
+      $('#dlg').close(); refreshApps();
+    } catch (e) {
+      const el = $('#addErr'); el.textContent = e.message; el.classList.remove('hidden'); btn.disabled = false;
+    }
+  };
+  $('#addGo').onclick = go;
+  $('#addRepo').onkeydown = e => { if (e.key === 'Enter') go(); };
+  openDialog = null; window._settingsDraw = null;
+  $('#dlg').showModal(); $('#addRepo').focus();
 }
 
 async function setting(id, body){ try { await api(`/api/apps/${id}/settings`, {method:'POST', body}); } catch (e) { toast(e.message); } refreshApps(); }
@@ -360,6 +401,7 @@ async function showSettings(){
   openDialog = null; draw().then(() => $('#dlg').showModal());
 }
 $('#settingsBtn').onclick = showSettings;
+$('#addAppBtn').onclick = showAddApp;
 $('#aboutBtn').onclick = showAbout;
 
 window.addEventListener('focus', () => { if ($('#dlg').open && window._settingsDraw && $('#dlgTitle').textContent === 'Settings' && document.activeElement && document.activeElement.tagName !== 'INPUT') window._settingsDraw(); });
@@ -385,7 +427,7 @@ $('#checkAll').onclick = async () => { try { await api('/api/check', {method:'PO
     if (ME.build_time) $('#ver').title = 'Built at ' + ME.build_time;
     $('#who').textContent = ME.name + (ME.admin ? ' · admin' : '');
     if (ME.auth_mode === 'none') $('#openBanner').style.display = '';
-    if (ME.admin) { $('#checkAll').style.display = ''; $('#settingsBtn').style.display = ''; }
+    if (ME.admin) { $('#checkAll').style.display = ''; $('#settingsBtn').style.display = ''; $('#addAppBtn').style.display = ''; }
     if (ME.can_sign_out) $('#signout').style.display = '';
   } catch (e) { return; }
   await refreshApps();

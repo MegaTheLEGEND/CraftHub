@@ -164,6 +164,24 @@ fn to_release(r: GhRelease, web_marker: &str) -> Release {
     }
 }
 
+#[derive(Deserialize)]
+struct GhRepo {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    full_name: String,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+/// What GitHub knows about a repository, used when adding it to the catalog.
+pub struct RepoInfo {
+    /// Canonical `owner/repo` casing.
+    pub full_name: String,
+    pub name: String,
+    pub description: String,
+}
+
 /// Newest release (GitHub returns newest first) that ships a web build.
 pub fn pick_latest(list: &[Release], include_prerelease: bool) -> Option<&Release> {
     list.iter().find(|r| r.web.is_some() && (include_prerelease || !r.prerelease))
@@ -226,7 +244,7 @@ impl Shared {
     /// Releases for an app. Served from the in-memory cache for ten minutes unless `force`; after that
     /// GitHub is asked with a conditional request. This runs on the server only: browsers never contact the GitHub API.
     pub async fn releases(&self, id: &str, force: bool) -> Result<Vec<Release>> {
-        let def = self.app_def(id).ok_or_else(|| anyhow!("unknown app '{id}'"))?.clone();
+        let def = self.app_def(id).ok_or_else(|| anyhow!("unknown app '{id}'"))?;
         let (prev_list, prev_etag) = {
             let cache = self.releases.lock().await;
             match cache.get(id) {
@@ -248,6 +266,28 @@ impl Shared {
             .await
             .insert(id.to_string(), CachedReleases { fetched: Instant::now(), list: list.clone(), etag });
         Ok(list)
+    }
+
+    /// Look a repository up so a typo is reported when it is added, not as a confusing error on the card later.
+    pub async fn repo_info(&self, repo: &str) -> Result<RepoInfo> {
+        let url = format!("{}/repos/{}", self.cfg.github_api.trim_end_matches('/'), repo);
+        let mut rq = self
+            .http
+            .get(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28");
+        if let Some(t) = self.github_token() {
+            rq = rq.bearer_auth(t);
+        }
+        let resp = rq.send().await.map_err(|e| anyhow!("GitHub request failed: {e}"))?;
+        match resp.status().as_u16() {
+            200 => {}
+            404 => bail!("GitHub has no repository '{repo}' (private repositories need a token in Settings)"),
+            403 | 429 => bail!("GitHub API refused the request; you are probably rate limited, add a GitHub token in Settings"),
+            other => bail!("GitHub API returned {other} for {repo}"),
+        }
+        let gh: GhRepo = resp.json().await.map_err(|e| anyhow!("bad GitHub response: {e}"))?;
+        Ok(RepoInfo { full_name: gh.full_name, name: gh.name, description: gh.description.unwrap_or_default() })
     }
 
     /// Whatever is cached right now, without touching the network.

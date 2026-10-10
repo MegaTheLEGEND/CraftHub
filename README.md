@@ -128,11 +128,22 @@ treat the backup as secret, since it holds the client secret.
 | `KEEP_VERSIONS` | `3` | Versions kept per app (the active one always stays) |
 | `INCLUDE_PRERELEASE` | `true` | Follow pre-releases (PhotoCraft currently ships `-rc` tags) |
 | `EXTRA_CA_FILE` | | PEM file to trust, for an Authentik behind a private CA |
-| `DATA_DIR` | `/data` | Volume: installed apps, `state.json`, optional `apps.toml` |
+| `DATA_DIR` | `/data` | Volume: installed apps, `state.json`, optional `apps.toml`, `custom-apps.json` (apps added from the UI) |
 
 ### Adding or overriding apps
 
-The catalog ships with the storytold apps. Add or change entries in `/data/apps.toml`:
+The catalog is compiled into the image: the storytold apps plus [SolveCraft](https://github.com/bherbruck/solvecraft)
+(`bherbruck/solvecraft`). Building the image (`docker build`) includes all of them.
+
+**From the UI (no rebuild):** admins get an **Add app** button. Paste `owner/repo` or any github.com URL of a repository
+that publishes releases in the same format (a `...-web-<version>.zip` asset with an `index.html` at its root, and
+optionally `SHA256SUMS.txt`). CraftHub checks that the repository exists, lists it with a *custom* badge and remembers it
+in `/data/custom-apps.json`. A newly added app is **not installed automatically**: press Install once, and turn on
+*Update automatically* in its Versions dialog if you want it to follow new releases. Custom apps can be removed again
+from their Versions dialog (this also deletes their installed versions). Built-in apps can't be removed from the UI;
+hide one with `disabled = true` in `apps.toml`.
+
+**From a file:** add or change entries in `/data/apps.toml`:
 
 ```toml
 [[app]]

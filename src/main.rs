@@ -111,7 +111,7 @@ async fn main() -> Result<()> {
     let bind = cfg.bind.clone();
     let state = AppState(std::sync::Arc::new(Shared {
         cfg,
-        catalog,
+        catalog: std::sync::RwLock::new(catalog),
         store,
         http,
         jobs: StdMutex::new(HashMap::new()),
@@ -128,6 +128,8 @@ async fn main() -> Result<()> {
         .route("/", get(ui_index))
         .route("/api/me", get(api::me))
         .route("/api/apps", get(api::list_apps))
+        .route("/api/catalog", post(api::add_app))
+        .route("/api/catalog/{id}", delete(api::remove_app))
         .route("/api/check", post(api::check_all))
         .route("/api/settings", get(api::get_settings).post(api::set_settings))
         .route("/api/auth", get(api::get_auth))

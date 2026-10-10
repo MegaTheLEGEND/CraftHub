@@ -242,7 +242,7 @@ fn default_marker() -> String {
     "-web-".into()
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AppDef {
     pub id: String,
     #[serde(default)]
@@ -259,6 +259,9 @@ pub struct AppDef {
     pub icon: Option<String>,
     #[serde(default)]
     pub disabled: bool,
+    /// Added from the UI (stored in custom-apps.json); only these can be removed from the UI again.
+    #[serde(default, skip_deserializing)]
+    pub custom: bool,
 }
 
 #[derive(Deserialize)]
@@ -267,32 +270,33 @@ struct CatalogFile {
     app: Vec<AppDef>,
 }
 
-const BUILTIN: &[(&str, &str, &str)] = &[
-    ("photocraft", "PhotoCraft", "Replaces Photoshop. Image editing: layers, masks, type and real PSD files"),
-    ("vectorcraft", "VectorCraft", "Replaces Illustrator. Vector illustration"),
-    ("filmcraft", "FilmCraft", "Replaces Premiere Pro. Video editing, color and sound"),
-    ("lightcraft", "LightCraft", "Replaces Lightroom. Photo library and raw development"),
-    ("pdfcraft", "PdfCraft / PrintCraft", "Replaces Acrobat. Reading, organizing and protecting PDFs"),
-    ("effectcraft", "EffectCraft", "Replaces After Effects. Motion graphics and visual effects"),
-    ("designcraft", "DesignCraft", "Replaces InDesign. Page layout and publishing"),
-    ("cadcraft", "CADCraft", "Replaces AutoCAD. Computer-aided design and drafting"),
-    ("wordcraft", "WordCraft", "Replaces Microsoft Word. Word processing"),
-    ("gridcraft", "GridCraft", "Replaces Microsoft Excel. Spreadsheets"),
-    ("soundcraft", "SoundCraft", "Replaces Pro Tools. Audio production"),
-    ("deckcraft", "DeckCraft", "Replaces PowerPoint. Presentations and slide shows"),
+const BUILTIN: &[(&str, &str, &str, &str)] = &[
+    ("photocraft", "PhotoCraft", "Replaces Photoshop. Image editing: layers, masks, type and real PSD files", "storytold/photocraft"),
+    ("vectorcraft", "VectorCraft", "Replaces Illustrator. Vector illustration", "storytold/vectorcraft"),
+    ("filmcraft", "FilmCraft", "Replaces Premiere Pro. Video editing, color and sound", "storytold/filmcraft"),
+    ("lightcraft", "LightCraft", "Replaces Lightroom. Photo library and raw development", "storytold/lightcraft"),
+    ("pdfcraft", "PdfCraft / PrintCraft", "Replaces Acrobat. Reading, organizing and protecting PDFs", "storytold/pdfcraft"),
+    ("effectcraft", "EffectCraft", "Replaces After Effects. Motion graphics and visual effects", "storytold/effectcraft"),
+    ("designcraft", "DesignCraft", "Replaces InDesign. Page layout and publishing", "storytold/designcraft"),
+    ("cadcraft", "CADCraft", "Replaces AutoCAD. Computer-aided design and drafting", "storytold/cadcraft"),
+    ("wordcraft", "WordCraft", "Replaces Microsoft Word. Word processing", "storytold/wordcraft"),
+    ("gridcraft", "GridCraft", "Replaces Microsoft Excel. Spreadsheets", "storytold/gridcraft"),
+    ("soundcraft", "SoundCraft", "Replaces Pro Tools. Audio production", "storytold/soundcraft"),
+    ("deckcraft", "DeckCraft", "Replaces PowerPoint. Presentations and slide shows", "storytold/deckcraft"),
 ];
 
 pub fn load_catalog(data_dir: &Path) -> Result<Vec<AppDef>> {
     let mut apps: Vec<AppDef> = BUILTIN
         .iter()
-        .map(|(id, name, desc)| AppDef {
+        .map(|(id, name, desc, repo)| AppDef {
             id: (*id).into(),
             name: (*name).into(),
-            repo: format!("storytold/{id}"),
+            repo: (*repo).into(),
             description: (*desc).into(),
             web_asset_contains: default_marker(),
             icon: None,
             disabled: false,
+            custom: false,
         })
         .collect();
 
@@ -320,8 +324,110 @@ pub fn load_catalog(data_dir: &Path) -> Result<Vec<AppDef>> {
             }
         }
     }
+    // Repositories added from the UI. Built-ins and apps.toml win if an id is already taken.
+    for def in load_custom(data_dir) {
+        if is_safe_name(&def.id) && parse_repo(&def.repo).is_ok() && !apps.iter().any(|a| a.id == def.id) {
+            apps.push(def);
+        } else {
+            tracing::warn!("ignoring invalid or duplicate entry '{}' in {CUSTOM_FILE}", def.id);
+        }
+    }
     apps.retain(|a| !a.disabled);
     Ok(apps)
+}
+
+pub const CUSTOM_FILE: &str = "custom-apps.json";
+
+/// Apps the admin added from the UI (`/data/custom-apps.json`).
+pub fn load_custom(data_dir: &Path) -> Vec<AppDef> {
+    let path = data_dir.join(CUSTOM_FILE);
+    let Ok(text) = std::fs::read_to_string(&path) else { return vec![] };
+    match serde_json::from_str::<Vec<AppDef>>(&text) {
+        Ok(list) => list
+            .into_iter()
+            .map(|mut a| {
+                a.custom = true;
+                a
+            })
+            .collect(),
+        Err(e) => {
+            tracing::warn!("could not parse {}: {e}", path.display());
+            vec![]
+        }
+    }
+}
+
+/// Persist the custom apps from `apps` (atomically).
+pub fn save_custom(data_dir: &Path, apps: &[AppDef]) -> Result<()> {
+    let custom: Vec<&AppDef> = apps.iter().filter(|a| a.custom).collect();
+    let text = serde_json::to_string_pretty(&custom)?;
+    let path = data_dir.join(CUSTOM_FILE);
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, text).with_context(|| format!("writing {}", tmp.display()))?;
+    std::fs::rename(&tmp, &path).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+/// Accepts `owner/repo`, `github.com/owner/repo`, `https://github.com/owner/repo[.git][/anything]`
+/// or `git@github.com:owner/repo.git` and returns `owner/repo`.
+pub fn parse_repo(input: &str) -> Result<String> {
+    let mut s = input.trim();
+    for prefix in ["https://", "http://", "ssh://git@", "git@"] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            s = rest;
+            break;
+        }
+    }
+    s = s.strip_prefix("www.").unwrap_or(s);
+    if let Some(rest) = s.strip_prefix("github.com") {
+        if rest.starts_with('/') || rest.starts_with(':') {
+            s = rest.trim_start_matches(|c: char| c == '/' || c == ':');
+        }
+    }
+    let mut parts = s.split('/').filter(|p| !p.is_empty());
+    let (Some(owner), Some(repo)) = (parts.next(), parts.next()) else {
+        bail!("not a GitHub repository; use owner/repo or a github.com URL");
+    };
+    let repo = repo.split(|c: char| c == '?' || c == '#').next().unwrap_or("");
+    let repo = repo.strip_suffix(".git").unwrap_or(repo);
+    let owner_ok = !owner.is_empty() && owner.len() <= 39 && owner.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    let repo_ok = !repo.is_empty()
+        && repo.len() <= 100
+        && repo != "."
+        && repo != ".."
+        && repo.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if !owner_ok || !repo_ok {
+        bail!("not a GitHub repository; use owner/repo or a github.com URL");
+    }
+    Ok(format!("{owner}/{repo}"))
+}
+
+/// A catalog id for `repo`: the repository name, or owner-name (then owner-name-2, ...) if that is taken.
+pub fn derive_id(repo: &str, existing: &[AppDef]) -> String {
+    let (owner, name) = repo.split_once('/').unwrap_or(("", repo));
+    let clean = |s: &str| -> String {
+        s.to_ascii_lowercase()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') { c } else { '-' })
+            .collect()
+    };
+    let base = match clean(name).trim_matches('-') {
+        "" => "app".to_string(),
+        b => b.to_string(),
+    };
+    let owner = clean(owner);
+    let taken = |id: &str| existing.iter().any(|a| a.id == id);
+    let mut id = base.clone();
+    if taken(&id) {
+        id = format!("{owner}-{base}");
+    }
+    let mut n = 2;
+    while taken(&id) {
+        id = format!("{owner}-{base}-{n}");
+        n += 1;
+    }
+    id.truncate(100);
+    id
 }
 
 #[cfg(test)]
@@ -336,6 +442,75 @@ mod tests {
         assert!(!is_safe_name("../etc"));
         assert!(!is_safe_name("a/b"));
         assert!(!is_safe_name(""));
+    }
+
+    #[test]
+    fn builtin_catalog_has_solvecraft() {
+        let dir = std::env::temp_dir().join("craft-hub-test-nonexistent");
+        let apps = load_catalog(&dir).unwrap();
+        let s = apps.iter().find(|a| a.id == "solvecraft").expect("solvecraft is built in");
+        assert_eq!(s.repo, "bherbruck/solvecraft");
+        assert!(!s.custom);
+    }
+
+    #[test]
+    fn parses_repo_inputs() {
+        for ok in [
+            "bherbruck/solvecraft",
+            "  bherbruck/solvecraft  ",
+            "github.com/bherbruck/solvecraft",
+            "https://github.com/bherbruck/solvecraft",
+            "https://github.com/bherbruck/solvecraft.git",
+            "https://www.github.com/bherbruck/solvecraft/releases/tag/v0.1.0?x=1#y",
+            "git@github.com:bherbruck/solvecraft.git",
+        ] {
+            assert_eq!(parse_repo(ok).unwrap(), "bherbruck/solvecraft", "{ok}");
+        }
+        for bad in ["", "solvecraft", "https://gitlab.com/a/b", "a/../b", "../etc/passwd", "a b/c", "a/b c", "https://github.com/onlyowner"] {
+            assert!(parse_repo(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn derives_unique_ids() {
+        let mk = |id: &str| AppDef {
+            id: id.into(),
+            name: id.into(),
+            repo: String::new(),
+            description: String::new(),
+            web_asset_contains: default_marker(),
+            icon: None,
+            disabled: false,
+            custom: false,
+        };
+        assert_eq!(derive_id("Someone/My.App", &[]), "my-app");
+        assert_eq!(derive_id("someone/photocraft", &[mk("photocraft")]), "someone-photocraft");
+        assert_eq!(derive_id("someone/photocraft", &[mk("photocraft"), mk("someone-photocraft")]), "someone-photocraft-2");
+        assert!(is_safe_name(&derive_id("a/..x..", &[])));
+    }
+
+    #[test]
+    fn custom_apps_round_trip() {
+        let dir = std::env::temp_dir().join(format!("craft-hub-custom-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut apps = load_catalog(&dir).unwrap();
+        apps.push(AppDef {
+            id: "widget".into(),
+            name: "Widget".into(),
+            repo: "someone/widget".into(),
+            description: "d".into(),
+            web_asset_contains: "-web-".into(),
+            icon: None,
+            disabled: false,
+            custom: true,
+        });
+        save_custom(&dir, &apps).unwrap();
+        let again = load_catalog(&dir).unwrap();
+        let w = again.iter().find(|a| a.id == "widget").expect("custom app is loaded");
+        assert!(w.custom && w.repo == "someone/widget");
+        assert_eq!(again.iter().filter(|a| a.custom).count(), 1);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

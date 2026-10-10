@@ -1,7 +1,7 @@
 //! JSON API used by the launcher UI.
 
 use crate::auth::SessionUser;
-use crate::config::{is_safe_name, AuthCfg, AuthMode, SavedAuth};
+use crate::config::{self, is_safe_name, AppDef, AuthCfg, AuthMode, SavedAuth};
 use crate::github::{pick_latest, NativeAsset, Release};
 use crate::manager;
 use crate::build_info;
@@ -47,6 +47,8 @@ pub struct AppView {
     description: String,
     repo: String,
     icon: String,
+    /// Added from the UI; can be removed from the UI.
+    custom: bool,
     active: Option<String>,
     installed: Vec<Installed>,
     auto_update: bool,
@@ -84,6 +86,7 @@ async fn app_view(st: &AppState, id: &str) -> Option<AppView> {
         repo: def.repo.clone(),
         // Served (and cached) by this server so browsers never contact GitHub for icons.
         icon: format!("/api/apps/{}/icon", def.id),
+        custom: def.custom,
         active: rec.active.clone(),
         installed: rec.installed.clone(),
         auto_update: rec.auto_update,
@@ -120,12 +123,155 @@ pub async fn me(State(st): State<AppState>, Extension(user): Extension<SessionUs
 
 pub async fn list_apps(State(st): State<AppState>) -> Json<Vec<AppView>> {
     let mut out = vec![];
-    for def in &st.catalog {
+    for def in st.catalog_snapshot() {
         if let Some(v) = app_view(&st, &def.id).await {
             out.push(v);
         }
     }
     Json(out)
+}
+
+#[derive(Deserialize)]
+pub struct AddAppBody {
+    /// `owner/repo` or any github.com URL of the repository.
+    repo: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    description: String,
+    /// Substring that identifies the web-build zip among release assets (default `-web-`).
+    #[serde(default)]
+    web_asset_contains: String,
+}
+
+/// Add a GitHub repository to the catalog. It is listed but never installed until an admin presses Install.
+pub async fn add_app(
+    State(st): State<AppState>,
+    Extension(user): Extension<SessionUser>,
+    headers: HeaderMap,
+    Json(b): Json<AddAppBody>,
+) -> Response {
+    if let Err(r) = guard_admin(&user, &headers) {
+        return r;
+    }
+    let repo = match config::parse_repo(&b.repo) {
+        Ok(r) => r,
+        Err(e) => return err(StatusCode::BAD_REQUEST, format!("{e:#}")),
+    };
+    if st.catalog_snapshot().iter().any(|a| a.repo.eq_ignore_ascii_case(&repo)) {
+        return err(StatusCode::CONFLICT, "that repository is already in the catalog");
+    }
+    let marker = b.web_asset_contains.trim();
+    let marker = if marker.is_empty() { "-web-".to_string() } else { marker.to_string() };
+    if marker.len() > 100 || marker.chars().any(|c| c.is_control()) {
+        return err(StatusCode::BAD_REQUEST, "invalid web asset marker");
+    }
+    let info = match st.repo_info(&repo).await {
+        Ok(i) => i,
+        Err(e) => return err(StatusCode::BAD_GATEWAY, format!("{e:#}")),
+    };
+    let repo = if info.full_name.is_empty() { repo } else { info.full_name.clone() };
+    let clip = |s: &str, n: usize| -> String { s.trim().chars().filter(|c| !c.is_control()).take(n).collect() };
+    let name = {
+        let n = clip(&b.name, 60);
+        if n.is_empty() { clip(&info.name, 60) } else { n }
+    };
+    let description = {
+        let d = clip(&b.description, 300);
+        if d.is_empty() { clip(&info.description, 300) } else { d }
+    };
+    let snapshot = st.catalog_snapshot();
+    let id = config::derive_id(&repo, &snapshot);
+    // Hosted apps run on this origin, so a new app starts with auto-update off and is only installed on request.
+    if let Err(e) = st.store.update(&id, |r| r.auto_update = false).await {
+        return err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}"));
+    }
+    {
+        let mut cat = st.catalog.write().unwrap();
+        if cat.iter().any(|a| a.id == id || a.repo.eq_ignore_ascii_case(&repo)) {
+            return err(StatusCode::CONFLICT, "that app was just added; reload the page");
+        }
+        let mut next = cat.clone();
+        next.push(AppDef {
+            id: id.clone(),
+            name,
+            repo,
+            description,
+            web_asset_contains: marker,
+            icon: None,
+            disabled: false,
+            custom: true,
+        });
+        if let Err(e) = config::save_custom(&st.cfg.data_dir, &next) {
+            return err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}"));
+        }
+        *cat = next;
+    }
+    tracing::info!(app = %id, "app added from the UI");
+    let st2 = st.clone();
+    let id2 = id.clone();
+    tokio::spawn(async move {
+        match st2.releases(&id2, true).await {
+            Ok(_) => {
+                let _ = st2
+                    .store
+                    .update(&id2, |r| {
+                        r.last_check = Some(now());
+                        r.last_error = None;
+                    })
+                    .await;
+            }
+            Err(e) => {
+                let m = format!("{e:#}");
+                let _ = st2.store.update(&id2, |r| r.last_error = Some(m)).await;
+            }
+        }
+    });
+    match app_view(&st, &id).await {
+        Some(v) => Json(v).into_response(),
+        None => err(StatusCode::INTERNAL_SERVER_ERROR, "app disappeared"),
+    }
+}
+
+/// Remove an app that was added from the UI, together with its installed versions.
+pub async fn remove_app(
+    State(st): State<AppState>,
+    Extension(user): Extension<SessionUser>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    if let Err(r) = guard_admin(&user, &headers) {
+        return r;
+    }
+    let Some(def) = st.app_def(&id) else {
+        return err(StatusCode::NOT_FOUND, "unknown app");
+    };
+    if !def.custom {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "built-in apps cannot be removed here; hide one with `disabled = true` in /data/apps.toml",
+        );
+    }
+    if st.job_running(&id) {
+        return err(StatusCode::CONFLICT, "an install is running for this app");
+    }
+    {
+        let mut cat = st.catalog.write().unwrap();
+        let next: Vec<AppDef> = cat.iter().filter(|a| a.id != def.id).cloned().collect();
+        if let Err(e) = config::save_custom(&st.cfg.data_dir, &next) {
+            return err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}"));
+        }
+        *cat = next;
+    }
+    let _ = st.store.remove(&def.id).await;
+    st.releases.lock().await.remove(&def.id);
+    st.jobs.lock().unwrap().remove(&def.id);
+    let _ = tokio::fs::remove_dir_all(st.apps_dir().join(&def.id)).await;
+    let icons = st.cfg.data_dir.join("icons");
+    let _ = tokio::fs::remove_file(icons.join(format!("{}.png", def.id))).await;
+    let _ = tokio::fs::remove_file(icons.join(format!("{}.none", def.id))).await;
+    tracing::info!(app = %def.id, "app removed from the UI");
+    StatusCode::NO_CONTENT.into_response()
 }
 
 pub async fn check_all(
@@ -529,7 +675,7 @@ pub async fn disable_auth(State(st): State<AppState>, Extension(user): Extension
 
 /// Icon for an app, fetched once by the server and cached on disk; failures are remembered for a day.
 pub async fn icon(State(st): State<AppState>, Path(id): Path<String>) -> Response {
-    let Some(def) = st.app_def(&id).cloned() else {
+    let Some(def) = st.app_def(&id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
     let dir = st.cfg.data_dir.join("icons");

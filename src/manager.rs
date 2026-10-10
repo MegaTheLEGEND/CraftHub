@@ -376,7 +376,7 @@ pub async fn check_app(st: &AppState, app: &str) -> Result<()> {
 }
 
 pub async fn check_all(st: &AppState) {
-    for def in st.catalog.clone() {
+    for def in st.catalog_snapshot() {
         if let Err(e) = check_app(st, &def.id).await {
             tracing::warn!(app = %def.id, "update check failed: {e:#}");
         }
