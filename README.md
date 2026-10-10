@@ -1,3 +1,7 @@
+# Notice for humans from a human:
+
+I directed an AI agent to create this software. I like to disclose when i make something using AI, this is one of those things. it works well, all the data from the craft apps comes from their respective repositories. i have no affiliation with the creation of said apps, just the launcher.
+
 # CraftHub
 
 A self-hosted "Creative Cloud"-style launcher for the open-source
