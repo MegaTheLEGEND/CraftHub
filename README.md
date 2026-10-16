@@ -1,3 +1,7 @@
+<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/4f6c6eff-9a6f-411a-8d89-3b06393feff0" />
+
+
+
 # CraftHub
 
 A self-hosted, Docker-ready launcher for the Craft App Suite, styled after the ArtCraft Launcher. It finds,
@@ -5,7 +9,6 @@ downloads, verifies and hosts the **web builds** of the suite apps (PhotoCraft, 
 keeps them updated, and gives visitors the right desktop download for their platform. Rust/axum,
 one small container, optional Authentik/OIDC SSO.
 
-<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/4f6c6eff-9a6f-411a-8d89-3b06393feff0" />
 
 
 
