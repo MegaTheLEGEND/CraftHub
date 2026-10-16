@@ -1,4 +1,6 @@
 target
-data
 .git
-.env
+.github
+data
+*.zip
+TODO.md

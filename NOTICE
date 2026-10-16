@@ -1,0 +1,20 @@
+CraftHub
+Licensed under MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE).
+
+Third-party material
+--------------------
+- crates/core: vendored, unmodified "artcraft-launcher-core" from the ArtCraft Launcher
+  (MIT OR Apache-2.0). Licence files are in crates/core.
+- ui/icons/*.png: Craft App Suite app icons from the ArtCraft Launcher. Used to identify the
+  apps; they are not covered by this project's licence.
+- i18n/*.tsv: translations from the ArtCraft Launcher.
+- ui/fonts: Inter, Archivo and Geist Mono, subset to woff2, under the SIL Open Font License 1.1
+  (third_party/fonts/OFL-*.txt).
+- ui/social/*.svg: Simple Icons (CC0 1.0) and Font Awesome Free "linkedin" (CC BY 4.0, Fonticons, Inc.).
+  Details in third_party/social-README.md. The logos are trademarks of their owners.
+
+Trademarks
+----------
+This project is called CraftHub. Its look is modelled on the ArtCraft Launcher, whose brand licence
+forbids forks from using the ArtCraft name, logo or wordmark. None of those are used or shipped here;
+"ArtCraft" appears only to name the upstream launcher, its release feed and its community links.

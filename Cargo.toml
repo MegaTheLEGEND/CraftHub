@@ -1,15 +1,35 @@
+[workspace]
+resolver = "2"
+members = [".", "crates/core"]
+
+[workspace.package]
+version = "0.3.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.90"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+semver = { version = "1", features = ["serde"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
 [package]
-build = "build.rs"
-name = "craft-hub"
-version = "0.2.0"
-edition = "2021"
-description = "Self-hosted launcher and version manager for the ArtCraft 'Crafting Apps' web builds, with Authentik/OIDC SSO"
+name = "crafthub"
+description = "Self-hosted launcher and version manager for the Craft App Suite web builds, with Authentik/OIDC SSO"
 readme = "README.md"
 keywords = ["launcher", "self-hosted", "oidc", "authentik", "wasm"]
 categories = ["web-programming::http-server"]
-license = "MIT OR Apache-2.0"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+build = "build.rs"
 
 [dependencies]
+artcraft-launcher-core = { path = "crates/core" }
 anyhow = "1"
 axum = "0.8"
 axum-extra = { version = "0.10", features = ["cookie-private"] }
@@ -17,20 +37,21 @@ base64 = "0.22"
 brotli = "7"
 flate2 = "1"
 hex = "0.4"
+include_dir = "0.7"
 jsonwebtoken = "9"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
 sha2 = "0.10"
 time = "0.3"
 tokio = { version = "1", features = ["full"] }
 toml = "0.8"
-tower-http = { version = "0.6", features = ["fs", "trace", "set-header", "catch-panic"] }
-zip = "2"
 tower = { version = "0.5", features = ["util"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "set-header", "catch-panic"] }
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [build-dependencies]
 chrono = "0.4"

@@ -39,11 +39,17 @@ pub struct Config {
 
     pub github_token: Option<String>,
     pub github_api: String,
+    /// Replaces `https://github.com` in release download links (mirrors, air-gapped setups, tests).
+    pub github_download_url: Option<String>,
     pub update_interval_minutes: u64,
     pub auto_install: bool,
     pub keep_versions: usize,
     pub include_prerelease: bool,
     pub extra_ca_file: Option<PathBuf>,
+    /// ArtCraft's release feed (one cheap request instead of one per app). Empty string disables it.
+    pub feed_url: Option<String>,
+    /// Show "Like <commercial app>" on cards.
+    pub show_inspired_by: bool,
 }
 
 fn opt(key: &str) -> Option<String> {
@@ -71,6 +77,14 @@ fn num<T: std::str::FromStr>(key: &str, default: T) -> Result<T> {
 }
 
 impl Config {
+    /// A release download link as it should be fetched. The allow-list has already checked the original.
+    pub fn download_url(&self, url: &str) -> String {
+        match (&self.github_download_url, url.strip_prefix("https://github.com")) {
+            (Some(base), Some(rest)) => format!("{base}{rest}"),
+            _ => url.to_string(),
+        }
+    }
+
     pub fn from_env() -> Result<Self> {
         // No AUTH_MODE: OIDC only if fully configured by env, otherwise start open and configure it in the UI.
         let env_oidc = opt("OIDC_ISSUER").is_some() && opt("OIDC_CLIENT_ID").is_some() && opt("OIDC_CLIENT_SECRET").is_some();
@@ -105,15 +119,22 @@ impl Config {
             session_hours: num("SESSION_HOURS", 12u64)?,
             github_token: opt("GITHUB_TOKEN"),
             github_api: opt("GITHUB_API_URL").unwrap_or_else(|| "https://api.github.com".into()),
+            github_download_url: opt("GITHUB_DOWNLOAD_URL").map(|v| v.trim_end_matches('/').to_string()),
             update_interval_minutes: match (opt("UPDATE_INTERVAL_MINUTES"), opt("UPDATE_INTERVAL_HOURS")) {
                 (Some(_), _) => num("UPDATE_INTERVAL_MINUTES", 30u64)?,
                 (None, Some(_)) => num("UPDATE_INTERVAL_HOURS", 1u64)?.saturating_mul(60),
                 (None, None) => 30,
             },
-            auto_install: flag("AUTO_INSTALL", true),
+            auto_install: flag("AUTO_INSTALL", false),
             keep_versions: num("KEEP_VERSIONS", 3usize)?.max(1),
             include_prerelease: flag("INCLUDE_PRERELEASE", true),
             extra_ca_file: opt("EXTRA_CA_FILE").map(PathBuf::from),
+            feed_url: match env::var("FEED_URL") {
+                Ok(v) if v.trim().is_empty() => None,
+                Ok(v) => Some(v.trim().to_string()),
+                Err(_) => Some(artcraft_launcher_core::feed::FEED_URL.to_string()),
+            },
+            show_inspired_by: flag("SHOW_INSPIRED_BY", false),
         };
         cfg.validate()?;
         Ok(cfg)
@@ -270,35 +291,55 @@ struct CatalogFile {
     app: Vec<AppDef>,
 }
 
-const BUILTIN: &[(&str, &str, &str, &str)] = &[
-    ("photocraft", "PhotoCraft", "Replaces Photoshop. Image editing: layers, masks, type and real PSD files", "storytold/photocraft"),
-    ("vectorcraft", "VectorCraft", "Replaces Illustrator. Vector illustration", "storytold/vectorcraft"),
-    ("filmcraft", "FilmCraft", "Replaces Premiere Pro. Video editing, color and sound", "storytold/filmcraft"),
-    ("lightcraft", "LightCraft", "Replaces Lightroom. Photo library and raw development", "storytold/lightcraft"),
-    ("pdfcraft", "PdfCraft / PrintCraft", "Replaces Acrobat. Reading, organizing and protecting PDFs", "storytold/pdfcraft"),
-    ("effectcraft", "EffectCraft", "Replaces After Effects. Motion graphics and visual effects", "storytold/effectcraft"),
-    ("designcraft", "DesignCraft", "Replaces InDesign. Page layout and publishing", "storytold/designcraft"),
-    ("cadcraft", "CADCraft", "Replaces AutoCAD. Computer-aided design and drafting", "storytold/cadcraft"),
-    ("wordcraft", "WordCraft", "Replaces Microsoft Word. Word processing", "storytold/wordcraft"),
-    ("gridcraft", "GridCraft", "Replaces Microsoft Excel. Spreadsheets", "storytold/gridcraft"),
-    ("soundcraft", "SoundCraft", "Replaces Pro Tools. Audio production", "storytold/soundcraft"),
-    ("deckcraft", "DeckCraft", "Replaces PowerPoint. Presentations and slide shows", "storytold/deckcraft"),
-];
+/// Apps outside the ArtCraft suite that ship with the image: (id, name, description, repo, icon URL).
+/// The icon is fetched once by the server and cached, unless `ui/icons/<id>.png` is bundled.
+const EXTRA_BUILTIN: &[(&str, &str, &str, &str, &str)] = &[(
+    "solidcraft",
+    "SolidCraft",
+    "Parametric 3D CAD in pure Rust (community app)",
+    "tangency-labs/solidcraft",
+    "https://raw.githubusercontent.com/tangency-labs/solidcraft/main/assets/icons/app/linux/exports/hicolor/256x256/apps/ai.storyteller.solidcraft.png",
+)];
 
-pub fn load_catalog(data_dir: &Path) -> Result<Vec<AppDef>> {
-    let mut apps: Vec<AppDef> = BUILTIN
-        .iter()
-        .map(|(id, name, desc, repo)| AppDef {
-            id: (*id).into(),
-            name: (*name).into(),
-            repo: (*repo).into(),
-            description: (*desc).into(),
+/// The commercial app each suite app is an alternative to (shown as "Like ...").
+pub fn inspired_by(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "photocraft" => "Adobe Photoshop",
+        "vectorcraft" => "Adobe Illustrator",
+        "filmcraft" => "Adobe Premiere Pro",
+        "lightcraft" => "Adobe Lightroom",
+        "pdfcraft" => "Adobe Acrobat",
+        "effectcraft" => "Adobe After Effects",
+        "designcraft" => "Adobe InDesign",
+        "cadcraft" => "Autodesk AutoCAD",
+        "wordcraft" => "Microsoft Word",
+        "gridcraft" => "Microsoft Excel",
+        "soundcraft" => "Pro Tools",
+        "deckcraft" => "Microsoft PowerPoint",
+        "figcraft" => "Figma",
+        _ => return None,
+    })
+}
+
+fn builtin_apps() -> Vec<AppDef> {
+    let suite = artcraft_launcher_core::SUITE.iter().map(|a| (a.id, a.name, a.tagline, a.repo, ""));
+    suite
+        .chain(EXTRA_BUILTIN.iter().copied())
+        .map(|(id, name, desc, repo, icon)| AppDef {
+            id: id.into(),
+            name: name.into(),
+            repo: repo.into(),
+            description: desc.into(),
             web_asset_contains: default_marker(),
-            icon: None,
+            icon: (!icon.is_empty()).then(|| icon.to_string()),
             disabled: false,
             custom: false,
         })
-        .collect();
+        .collect()
+}
+
+pub fn load_catalog(data_dir: &Path) -> Result<Vec<AppDef>> {
+    let mut apps: Vec<AppDef> = builtin_apps();
 
     let path = data_dir.join("apps.toml");
     if path.exists() {
@@ -313,7 +354,7 @@ pub fn load_catalog(data_dir: &Path) -> Result<Vec<AppDef>> {
                 def.name = def.id.clone();
             }
             if def.repo.is_empty() {
-                def.repo = format!("storytold/{}", def.id);
+                def.repo = format!("{}/{}", artcraft_launcher_core::catalog::GITHUB_OWNER, def.id);
             }
             match by_id.get(&def.id) {
                 Some(&i) => apps[i] = def,
@@ -445,12 +486,16 @@ mod tests {
     }
 
     #[test]
-    fn builtin_catalog_has_solvecraft() {
-        let dir = std::env::temp_dir().join("craft-hub-test-nonexistent");
+    fn builtin_catalog_is_the_whole_suite_plus_solidcraft() {
+        let dir = std::env::temp_dir().join("artcraft-server-test-nonexistent");
         let apps = load_catalog(&dir).unwrap();
-        let s = apps.iter().find(|a| a.id == "solvecraft").expect("solvecraft is built in");
-        assert_eq!(s.repo, "bherbruck/solvecraft");
+        assert_eq!(apps.len(), 14);
+        let s = apps.iter().find(|a| a.id == "solidcraft").expect("solidcraft is built in");
+        assert_eq!(s.repo, "tangency-labs/solidcraft");
+        assert!(s.icon.as_deref().is_some_and(|u| u.contains("tangency-labs/solidcraft")));
         assert!(!s.custom);
+        assert!(apps.iter().any(|a| a.id == "figcraft"));
+        assert_eq!(inspired_by("photocraft"), Some("Adobe Photoshop"));
     }
 
     #[test]
@@ -491,7 +536,7 @@ mod tests {
 
     #[test]
     fn custom_apps_round_trip() {
-        let dir = std::env::temp_dir().join(format!("craft-hub-custom-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("artcraft-server-custom-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let mut apps = load_catalog(&dir).unwrap();
@@ -515,7 +560,7 @@ mod tests {
 
     #[test]
     fn builtin_catalog_has_photocraft() {
-        let dir = std::env::temp_dir().join("craft-hub-test-nonexistent");
+        let dir = std::env::temp_dir().join("artcraft-server-test-nonexistent");
         let apps = load_catalog(&dir).unwrap();
         assert!(apps.iter().any(|a| a.id == "photocraft" && a.repo == "storytold/photocraft"));
     }

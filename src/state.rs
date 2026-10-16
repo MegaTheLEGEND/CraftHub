@@ -1,5 +1,7 @@
 use crate::config::{AppDef, AuthCfg, Config, SavedAuth};
 use crate::github::Release;
+use artcraft_launcher_core::feed::Feed;
+use std::collections::HashSet;
 use anyhow::{Context, Result};
 use axum::extract::FromRef;
 use axum_extra::extract::cookie::Key;
@@ -125,7 +127,7 @@ impl Store {
 
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct Job {
-    /// downloading | extracting | done | error
+    /// queued | downloading | extracting | done | error | cancelled
     pub state: String,
     pub tag: String,
     pub message: String,
@@ -136,7 +138,7 @@ pub struct Job {
 
 impl Job {
     pub fn running(&self) -> bool {
-        self.state == "downloading" || self.state == "extracting"
+        matches!(self.state.as_str(), "queued" | "downloading" | "extracting")
     }
 }
 
@@ -171,6 +173,18 @@ pub struct Shared {
     pub auth: RwLock<Arc<AuthCfg>>,
     /// (fetched at, discovery issuer URL it was fetched for, metadata)
     pub oidc: Mutex<Option<(Instant, String, Arc<OidcMeta>)>>,
+    /// Apps whose running install an admin asked to cancel.
+    pub cancels: StdMutex<HashSet<String>>,
+    /// ArtCraft's release feed, as last fetched.
+    pub feed: StdMutex<Option<(Instant, Feed)>>,
+    /// Latest web release per suite app according to the feed.
+    pub feed_hints: StdMutex<std::collections::BTreeMap<String, Release>>,
+    /// Unix time until which GitHub says we are rate limited.
+    pub rate_limited_until: StdMutex<Option<u64>>,
+    /// Where the last full check looked: "feed" and/or "github".
+    pub last_sources: StdMutex<Vec<&'static str>>,
+    /// Unix time of the last full check.
+    pub last_full_check: StdMutex<Option<u64>>,
 }
 
 #[derive(Clone)]
@@ -245,6 +259,10 @@ impl Shared {
 
     pub fn job_running(&self, id: &str) -> bool {
         self.job(id).map(|j| j.running()).unwrap_or(false)
+    }
+
+    pub fn cancel_requested(&self, id: &str) -> bool {
+        self.cancels.lock().unwrap().contains(id)
     }
 
     pub fn set_job(&self, id: &str, f: impl FnOnce(&mut Job)) {

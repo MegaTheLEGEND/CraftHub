@@ -1,7 +1,7 @@
 //! Installing, activating, pruning and auto-updating web builds.
 
 use crate::config::is_safe_name;
-use crate::github::pick_latest;
+use crate::github::{pick_latest, Release};
 use crate::state::{now, AppState, Installed};
 use anyhow::{anyhow, bail, Context, Result};
 use sha2::{Digest, Sha256};
@@ -11,7 +11,6 @@ use std::{
     path::{Component, Path, PathBuf},
     time::Duration,
 };
-use zip::ZipArchive;
 use tokio::io::AsyncWriteExt;
 
 const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -37,40 +36,66 @@ pub async fn install(st: AppState, app: String, tag: String, activate: bool) -> 
             j.message = format!("Installed {tag}");
         }),
         Err(e) => {
-            tracing::warn!(app = %app, %tag, "install failed: {e:#}");
             let msg = format!("{e:#}");
-            st.set_job(&app, |j| {
-                j.state = "error".into();
-                j.message = msg.clone();
-            });
-            let _ = st.store.update(&app, |r| r.last_error = Some(msg)).await;
+            if msg == Cancelled.msg() {
+                st.set_job(&app, |j| {
+                    j.state = "cancelled".into();
+                    j.message = msg.clone();
+                });
+            } else {
+                tracing::warn!(app = %app, %tag, "install failed: {e:#}");
+                st.set_job(&app, |j| {
+                    j.state = "error".into();
+                    j.message = msg.clone();
+                });
+                let _ = st.store.update(&app, |r| r.last_error = Some(msg)).await;
+            }
         }
     }
+    st.cancels.lock().unwrap().remove(&app);
     result
 }
 
-async fn install_inner(st: &AppState, app: &str, tag: &str, activate: bool) -> Result<()> {
+/// A release by tag: the feed's hint if it is the one asked for, else GitHub's list.
+async fn find_release(st: &AppState, app: &str, tag: &str) -> Result<Release> {
+    if let Some(h) = st.feed_hint(app) {
+        if h.tag == tag {
+            return Ok(h);
+        }
+    }
     let mut releases = st.releases(app, false).await?;
     if !releases.iter().any(|r| r.tag == tag) {
         releases = st.releases(app, true).await?;
     }
-    let rel = releases
-        .iter()
-        .find(|r| r.tag == tag)
-        .cloned()
-        .ok_or_else(|| anyhow!("release '{tag}' not found for {app}"))?;
+    releases.into_iter().find(|r| r.tag == tag).ok_or_else(|| anyhow!("release '{tag}' not found for {app}"))
+}
+
+struct Cancelled;
+
+async fn install_inner(st: &AppState, app: &str, tag: &str, activate: bool) -> Result<()> {
+    let rel = find_release(st, app, tag).await?;
     let web = rel.web.clone().ok_or_else(|| anyhow!("release {tag} has no web build"))?;
     let version = rel.version.clone();
     if !is_safe_name(&version) {
         bail!("refusing unsafe version string '{version}'");
+    }
+    if st.cancel_requested(app) {
+        bail!(Cancelled.msg());
     }
 
     let tmp_dir = st.cfg.data_dir.join("tmp");
     tokio::fs::create_dir_all(&tmp_dir).await?;
     let zip_path = tmp_dir.join(format!("{app}-{version}.zip"));
 
+    st.set_job(app, |j| {
+        j.state = "downloading".into();
+        j.tag = tag.to_string();
+        j.message = "Looking up release".into();
+        j.done = 0;
+        j.total = 0;
+    });
     // ---- download ---------------------------------------------------------
-    let mut resp = st.http.get(&web.url).send().await?.error_for_status()?;
+    let mut resp = st.http.get(st.cfg.download_url(&web.url)).send().await?.error_for_status()?;
     let total = resp.content_length().unwrap_or(web.size);
     st.set_job(app, |j| {
         j.total = total;
@@ -81,6 +106,11 @@ async fn install_inner(st: &AppState, app: &str, tag: &str, activate: bool) -> R
     let mut done = 0u64;
     let mut last_report = 0u64;
     while let Some(chunk) = resp.chunk().await? {
+        if st.cancel_requested(app) {
+            drop(file);
+            let _ = tokio::fs::remove_file(&zip_path).await;
+            bail!(Cancelled.msg());
+        }
         hasher.update(&chunk);
         file.write_all(&chunk).await?;
         done += chunk.len() as u64;
@@ -91,7 +121,11 @@ async fn install_inner(st: &AppState, app: &str, tag: &str, activate: bool) -> R
     }
     file.flush().await?;
     drop(file);
-    st.set_job(app, |j| j.done = done);
+    st.set_job(app, |j| {
+        j.done = done;
+        j.state = "verifying".into();
+        j.message = "Verifying checksum…".into();
+    });
     let got = hex::encode(hasher.finalize());
 
     // ---- verify -----------------------------------------------------------
@@ -151,16 +185,16 @@ async fn install_inner(st: &AppState, app: &str, tag: &str, activate: bool) -> R
     Ok(())
 }
 
-async fn fetch_sum(st: &AppState, url: &str, file_name: &str) -> Option<String> {
-    let text = st.http.get(url).send().await.ok()?.error_for_status().ok()?.text().await.ok()?;
-    for line in text.lines() {
-        let mut parts = line.split_whitespace();
-        let (Some(hash), Some(name)) = (parts.next(), parts.next()) else { continue };
-        if name.trim_start_matches('*') == file_name && hash.len() == 64 {
-            return Some(hash.to_ascii_lowercase());
-        }
+impl Cancelled {
+    fn msg(&self) -> &'static str {
+        "Install cancelled"
     }
-    None
+}
+
+/// The published checksum of `file_name` in a `SHA256SUMS.txt`.
+async fn fetch_sum(st: &AppState, url: &str, file_name: &str) -> Option<String> {
+    let text = st.http.get(st.cfg.download_url(url)).send().await.ok()?.error_for_status().ok()?.text().await.ok()?;
+    artcraft_launcher_core::release::parse_sha256sums(&text).into_iter().find(|(_, n)| n == file_name).map(|(h, _)| h)
 }
 
 /// Extract `zip_path` into `partial` (stripping a single top-level folder), precompress,
@@ -343,19 +377,36 @@ pub fn effective_prerelease(st: &AppState, per_app: Option<bool>) -> bool {
 }
 
 /// Refresh one app's release list and, if enabled, install whatever is newest.
+/// A routine check first asks the feed's hint; GitHub is asked when the feed has nothing usable.
 pub async fn check_app(st: &AppState, app: &str) -> Result<()> {
     let rec = st.store.record(app).await;
     let outcome: Result<()> = async {
-        let list = st.releases(app, true).await?;
         let pre = effective_prerelease(st, rec.include_prerelease);
-        let Some(latest) = pick_latest(&list, pre).cloned() else { return Ok(()) };
+        let hint = st.feed_hint(app).filter(|h| pre || !h.prerelease);
+        let latest = match hint {
+            Some(h) => {
+                st.last_sources.lock().unwrap().push("feed");
+                h
+            }
+            None => {
+                let list = st.releases(app, true).await?;
+                st.last_sources.lock().unwrap().push("github");
+                let Some(l) = pick_latest(&list, pre).cloned() else { return Ok(()) };
+                l
+            }
+        };
         let already = rec.installed.iter().any(|i| i.version == latest.version);
         let wanted = rec.auto_update && (st.cfg.auto_install || !rec.installed.is_empty());
         if wanted && !already && !st.job_running(app) {
             tracing::info!(app, version = %latest.version, "auto-installing");
+            st.set_job(app, |j| {
+                j.state = "downloading".into();
+                j.tag = latest.tag.clone();
+                j.message = "Starting".into();
+                j.done = 0;
+                j.total = 0;
+            });
             install(st.clone(), app.to_string(), latest.tag.clone(), true).await?;
-        } else if wanted && already && rec.active.as_deref() != Some(latest.version.as_str()) {
-            // Installed earlier but someone rolled back; leave their choice alone.
         }
         Ok(())
     }
@@ -376,15 +427,69 @@ pub async fn check_app(st: &AppState, app: &str) -> Result<()> {
 }
 
 pub async fn check_all(st: &AppState) {
+    st.refresh_feed(true).await;
+    st.last_sources.lock().unwrap().clear();
     for def in st.catalog_snapshot() {
         if let Err(e) = check_app(st, &def.id).await {
             tracing::warn!(app = %def.id, "update check failed: {e:#}");
         }
     }
+    let mut src = std::mem::take(&mut *st.last_sources.lock().unwrap());
+    src.sort_unstable();
+    src.dedup();
+    *st.last_sources.lock().unwrap() = src;
+    *st.last_full_check.lock().unwrap() = Some(now());
+}
+
+/// Install every app that has a newer release than its active version, one after another.
+/// Each app shows as "queued" until its turn.
+pub async fn update_all(st: AppState, targets: Vec<(String, String)>) {
+    for (app, _) in &targets {
+        st.set_job(app, |j| {
+            j.state = "queued".into();
+            j.message = "Waiting for other installs…".into();
+            j.done = 0;
+            j.total = 0;
+        });
+    }
+    for (app, tag) in targets {
+        if st.cancel_requested(&app) {
+            st.cancels.lock().unwrap().remove(&app);
+            st.set_job(&app, |j| {
+                j.state = "cancelled".into();
+                j.message = "Install cancelled".into();
+            });
+            continue;
+        }
+        let _ = install(st.clone(), app, tag, true).await;
+    }
+}
+
+/// Remove every installed version of an app. Auto-update is switched off so it stays removed.
+pub async fn uninstall(st: &AppState, app: &str) -> Result<()> {
+    let rec = st.store.record(app).await;
+    for i in &rec.installed {
+        if is_safe_name(&i.version) {
+            let dir = version_dir(st, app, &i.version);
+            if dir.exists() {
+                tokio::fs::remove_dir_all(&dir).await?;
+            }
+        }
+    }
+    st.store
+        .update(app, |r| {
+            r.installed.clear();
+            r.active = None;
+            r.auto_update = false;
+        })
+        .await?;
+    tracing::info!(app, "uninstalled");
+    Ok(())
 }
 
 /// Background loop: first check shortly after boot, then every UPDATE_INTERVAL_MINUTES (default 30).
-/// New releases are installed automatically unless AUTO_INSTALL is off or the app's own switch is off.
+/// Apps that are already installed are updated automatically unless the app's own switch is off.
+/// The first install of an app is manual (press Install) unless AUTO_INSTALL=true.
 pub async fn updater(st: AppState) {
     let minutes = st.cfg.update_interval_minutes;
     if minutes == 0 {
@@ -416,7 +521,7 @@ mod tests {
 
     #[test]
     fn strips_single_top_level_folder_and_requires_index() {
-        let dir = std::env::temp_dir().join(format!("craft-hub-t1-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("artcraft-server-t1-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let zip = dir.join("a.zip");
@@ -430,7 +535,7 @@ mod tests {
 
     #[test]
     fn rejects_archive_without_index() {
-        let dir = std::env::temp_dir().join(format!("craft-hub-t2-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("artcraft-server-t2-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let zip = dir.join("a.zip");
@@ -442,7 +547,7 @@ mod tests {
 
     #[test]
     fn flat_archive_is_not_stripped() {
-        let dir = std::env::temp_dir().join(format!("craft-hub-t3-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("artcraft-server-t3-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let zip = dir.join("a.zip");

@@ -16,9 +16,13 @@ fn not_found(msg: &str) -> Response {
     (
         StatusCode::NOT_FOUND,
         Html(format!(
-            r#"<!doctype html><meta charset="utf-8"><title>Not available</title>
-<body style="font:16px system-ui;background:#0f1115;color:#e6e8ee;display:grid;place-items:center;min-height:100vh;margin:0">
-<main style="max-width:30rem;padding:2rem"><h1>Not available</h1><p>{msg}</p><p><a style="color:#5aa2ff" href="/">Back to CraftHub</a></p></main>"#
+            r#"<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not available</title><style>:root{{color-scheme:light dark;--bg:#f2f1ee;--ink:#101014;--muted:rgba(16,16,20,.62);--line:rgba(16,16,20,.4);--accent:#1659c4;--inv:#101014;--invfg:#f2f1ee}}
+@media(prefers-color-scheme:dark){{:root{{--bg:#121316;--ink:#f2f1ee;--muted:rgba(242,241,238,.6);--line:rgba(242,241,238,.4);--accent:#74aaff;--inv:#fff;--invfg:#0b0b0c}}}}
+body{{font:14px/1.5 Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);display:grid;place-items:center;min-height:100vh;margin:0}}
+main{{max-width:30rem;padding:2rem;border:1px solid var(--line)}}h1{{font:600 22px system-ui;margin:0 0 .8rem}}
+a{{color:var(--accent)}}.tag{{display:inline-block;background:var(--inv);color:var(--invfg);font:700 11px ui-monospace,Menlo,monospace;letter-spacing:.15em;text-transform:uppercase;padding:3px 8px;margin-bottom:1rem}}</style>
+<main><span class="tag">{brand}</span><h1>Not available</h1><p>{msg}</p><p><a href="/">Back to {brand}</a></p></main>"#,
+            brand = crate::brand::PRODUCT
         )),
     )
         .into_response()

@@ -19,8 +19,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, sync::Arc, time::{Duration, Instant}};
 
-const SESSION_COOKIE: &str = "craft_session";
-const LOGIN_COOKIE: &str = "craft_login";
+const SESSION_COOKIE: &str = "crafthub_session";
+const LOGIN_COOKIE: &str = "crafthub_login";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SessionUser {
@@ -72,11 +72,15 @@ fn page(title: &str, body: &str, retry: bool) -> Html<String> {
     let link = if retry { r#"<p><a href="/auth/login">Try again</a></p>"# } else { "" };
     Html(format!(
         r#"<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{t}</title><style>body{{font:16px system-ui;background:#0f1115;color:#e6e8ee;display:grid;place-items:center;min-height:100vh;margin:0}}
-main{{max-width:30rem;padding:2rem}}a{{color:#5aa2ff}}code{{color:#9aa3b2}}</style>
-<main><h1>{t}</h1><p>{b}</p>{link}</main>"#,
+<title>{t}</title><style>:root{{color-scheme:light dark;--bg:#f2f1ee;--ink:#101014;--muted:rgba(16,16,20,.62);--line:rgba(16,16,20,.4);--accent:#1659c4;--inv:#101014;--invfg:#f2f1ee}}
+@media(prefers-color-scheme:dark){{:root{{--bg:#121316;--ink:#f2f1ee;--muted:rgba(242,241,238,.6);--line:rgba(242,241,238,.4);--accent:#74aaff;--inv:#fff;--invfg:#0b0b0c}}}}
+body{{font:14px/1.5 Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);display:grid;place-items:center;min-height:100vh;margin:0}}
+main{{max-width:30rem;padding:2rem;border:1px solid var(--line)}}h1{{font:600 22px system-ui;margin:0 0 .8rem}}
+a{{color:var(--accent)}}.tag{{display:inline-block;background:var(--inv);color:var(--invfg);font:700 11px ui-monospace,Menlo,monospace;letter-spacing:.15em;text-transform:uppercase;padding:3px 8px;margin-bottom:1rem}}</style>
+<main><span class="tag">{brand}</span><h1>{t}</h1><p>{b}</p>{link}</main>"#,
         t = esc(title),
-        b = esc(body)
+        b = esc(body),
+        brand = esc(crate::brand::PRODUCT)
     ))
 }
 
@@ -501,9 +505,11 @@ pub async fn logout(State(st): State<AppState>, jar: PrivateCookieJar) -> Result
     Ok((
         jar,
         Html(
-            r#"<!doctype html><meta charset="utf-8"><title>Signed out</title>
-<body style="font:16px system-ui;background:#0f1115;color:#e6e8ee;display:grid;place-items:center;min-height:100vh;margin:0">
-<main><h1>Signed out</h1><p><a style="color:#5aa2ff" href="/auth/login">Sign in again</a></p></main>"#
+            r#"<!doctype html><meta charset="utf-8"><title>Signed out</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{color-scheme:light dark;--bg:#f2f1ee;--ink:#101014;--muted:rgba(16,16,20,.62);--line:rgba(16,16,20,.4);--accent:#1659c4;--inv:#101014;--invfg:#f2f1ee}
+@media(prefers-color-scheme:dark){:root{--bg:#121316;--ink:#f2f1ee;--muted:rgba(242,241,238,.6);--line:rgba(242,241,238,.4);--accent:#74aaff;--inv:#fff;--invfg:#0b0b0c}}
+body{font:14px/1.5 Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);display:grid;place-items:center;min-height:100vh;margin:0}
+main{max-width:30rem;padding:2rem;border:1px solid var(--line)}h1{font:600 22px system-ui;margin:0 0 .8rem}
+a{color:var(--accent)}.tag{display:inline-block;background:var(--inv);color:var(--invfg);font:700 11px ui-monospace,Menlo,monospace;letter-spacing:.15em;text-transform:uppercase;padding:3px 8px;margin-bottom:1rem}</style><main><span class="tag">CraftHub</span><h1>Signed out</h1><p><a href="/auth/login">Sign in again</a></p></main>"#
                 .to_string(),
         ),
     )

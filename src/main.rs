@@ -5,13 +5,19 @@ mod github;
 mod hosting;
 mod manager;
 mod state;
-mod build_info;
+mod assets;
+mod brand;
+mod i18n;
+#[allow(dead_code)]
+mod build_info {
+    include!(concat!(env!("OUT_DIR"), "/build_info.rs"));
+}
 
 use anyhow::{Context, Result};
 use axum::{
     http::{header, HeaderValue},
     middleware,
-    response::{Html, IntoResponse},
+    response::IntoResponse,
     routing::{delete, get, post},
     Router,
 };
@@ -23,13 +29,20 @@ use tokio::sync::Mutex;
 use tower_http::{catch_panic::CatchPanicLayer, set_header::SetResponseHeaderLayer, trace::TraceLayer};
 use tracing_subscriber::EnvFilter;
 
-async fn ui_index() -> Html<&'static str> {
-    Html(include_str!("../ui/index.html"))
+async fn i18n_list() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "application/json")], i18n::list().to_string())
+}
+
+async fn i18n_catalog(axum::extract::Path(code): axum::extract::Path<String>) -> axum::response::Response {
+    match i18n::catalog(&code) {
+        Some(j) => ([(header::CONTENT_TYPE, "application/json"), (header::CACHE_CONTROL, "public, max-age=3600")], j).into_response(),
+        None => axum::http::StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 fn build_http_client(cfg: &Config) -> Result<reqwest::Client> {
     let mut b = reqwest::Client::builder()
-        .user_agent(concat!("craft-hub/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("crafthub/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(std::time::Duration::from_secs(15))
         .timeout(std::time::Duration::from_secs(900));
     if let Some(path) = &cfg.extra_ca_file {
@@ -39,7 +52,7 @@ fn build_http_client(cfg: &Config) -> Result<reqwest::Client> {
     Ok(b.build()?)
 }
 
-/// `craft-hub healthcheck`: used by the container HEALTHCHECK (the image has no curl).
+/// `crafthub healthcheck`: used by the container HEALTHCHECK (the image has no curl).
 async fn healthcheck() -> Result<()> {
     let bind = std::env::var("BIND").unwrap_or_else(|_| "0.0.0.0:8080".into());
     let port = bind.rsplit(':').next().unwrap_or("8080");
@@ -70,7 +83,7 @@ async fn main() -> Result<()> {
     }
 
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "craft_hub=info,tower_http=warn".into()))
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "crafthub=info,tower_http=warn".into()))
         .init();
 
     let cfg = Config::from_env()?;
@@ -120,17 +133,28 @@ async fn main() -> Result<()> {
         settings: StdMutex::new(settings),
         auth: std::sync::RwLock::new(std::sync::Arc::new(auth)),
         oidc: Mutex::new(None),
+        cancels: StdMutex::new(Default::default()),
+        feed: StdMutex::new(None),
+        feed_hints: StdMutex::new(Default::default()),
+        rate_limited_until: StdMutex::new(None),
+        last_sources: StdMutex::new(vec![]),
+        last_full_check: StdMutex::new(None),
     }));
 
     tokio::spawn(manager::updater(state.clone()));
 
     let protected = Router::new()
-        .route("/", get(ui_index))
+        .route("/", get(assets::index))
         .route("/api/me", get(api::me))
         .route("/api/apps", get(api::list_apps))
         .route("/api/catalog", post(api::add_app))
         .route("/api/catalog/{id}", delete(api::remove_app))
         .route("/api/check", post(api::check_all))
+        .route("/api/update-all", post(api::update_all))
+        .route("/api/apps/{id}/cancel", post(api::cancel))
+        .route("/api/apps/{id}/uninstall", post(api::uninstall))
+        .route("/api/apps/{id}/details", get(api::app_details))
+        .route("/api/apps/{id}/shots/{key}", get(api::screenshot))
         .route("/api/settings", get(api::get_settings).post(api::set_settings))
         .route("/api/auth", get(api::get_auth))
         .route("/api/auth/draft", post(api::save_auth_draft))
@@ -153,6 +177,9 @@ async fn main() -> Result<()> {
 
     let public = Router::new()
         .route("/healthz", get(|| async { "ok" }))
+        .route("/static/{*path}", get(assets::static_file))
+        .route("/api/i18n", get(i18n_list))
+        .route("/api/i18n/{code}", get(i18n_catalog))
         .route("/auth/login", get(auth::login))
         .route("/auth/callback", get(auth::callback))
         .route("/auth/logout", get(auth::logout));
@@ -184,7 +211,7 @@ async fn main() -> Result<()> {
         }));
 
     let listener = tokio::net::TcpListener::bind(&bind).await.with_context(|| format!("binding {bind}"))?;
-    tracing::info!("craft-hub listening on {bind}");
+    tracing::info!("crafthub listening on {bind}");
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

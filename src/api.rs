@@ -1,19 +1,24 @@
-//! JSON API used by the launcher UI.
+//! JSON API used by the web UI.
 
 use crate::auth::SessionUser;
-use crate::config::{self, is_safe_name, AppDef, AuthCfg, AuthMode, SavedAuth};
-use crate::github::{pick_latest, NativeAsset, Release};
+use crate::brand;
+use crate::config::{self, AppDef, AuthCfg, AuthMode, SavedAuth, is_safe_name};
+use crate::github::{self, Release};
 use crate::manager;
-use crate::build_info;
-use crate::state::{Installed, Job, AppState, now, fingerprint};
+use crate::state::{AppState, Installed, Job, fingerprint, now};
+use artcraft_launcher_core::{
+    AppStatus, CraftApp, Installed as CoreInstalled, InstallSource, Latest, catalog, details, status, version,
+};
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    Extension, Json,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+use crate::build_info;
 
 fn err(status: StatusCode, msg: impl Into<String>) -> Response {
     (status, Json(json!({ "error": msg.into() }))).into_response()
@@ -25,7 +30,7 @@ fn guard_admin(user: &SessionUser, headers: &HeaderMap) -> Result<(), Response> 
         return Err(err(StatusCode::FORBIDDEN, "administrator access required"));
     }
     match headers.get("x-requested-with").and_then(|v| v.to_str().ok()) {
-        Some("craft-hub") => Ok(()),
+        Some(v) if v == brand::REQUESTED_WITH => Ok(()),
         _ => Err(err(StatusCode::BAD_REQUEST, "missing X-Requested-With header")),
     }
 }
@@ -35,76 +40,131 @@ pub struct LatestView {
     tag: String,
     version: String,
     prerelease: bool,
-    published_at: Option<String>,
+    published_at: Option<i64>,
     url: String,
-    description: String,
 }
 
 #[derive(Serialize)]
 pub struct AppView {
     id: String,
     name: String,
-    description: String,
+    tagline: String,
     repo: String,
     icon: String,
+    /// classic | new | community
+    group: &'static str,
+    /// 1-based position in the suite (0 for community apps).
+    number: usize,
+    color: Option<String>,
+    ink_light: Option<String>,
+    ink_dark: Option<String>,
+    inspired_by: Option<&'static str>,
+    website: Option<String>,
+    has_details: bool,
     /// Added from the UI; can be removed from the UI.
     custom: bool,
+    /// checking | available | up_to_date | update_available | installed | unavailable | no_release | failed
+    status: &'static str,
+    /// An administrator rolled back to an older version on purpose.
+    pinned: bool,
     active: Option<String>,
     installed: Vec<Installed>,
     auto_update: bool,
     include_prerelease: bool,
     latest: Option<LatestView>,
-    update_available: bool,
-    native: Vec<NativeAsset>,
+    /// Desktop downloads, one best choice per visitor platform (`windows-x64`, `macos`, ...).
+    downloads: std::collections::BTreeMap<&'static str, github::Native>,
+    native: Vec<github::Native>,
     job: Option<Job>,
     last_check: Option<u64>,
     last_error: Option<String>,
-    checked: bool,
+}
+
+fn hex(c: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2])
 }
 
 async fn app_view(st: &AppState, id: &str) -> Option<AppView> {
     let def = st.app_def(id)?;
     let rec = st.store.record(id).await;
-    let releases = st.cached_releases(id).await;
     let pre = manager::effective_prerelease(st, rec.include_prerelease);
-    let latest = pick_latest(&releases, pre);
+    let releases = st.cached_releases(id).await;
+    let latest = st.latest(id, pre).await;
     // Desktop downloads come from the newest release that has any, even if it lacks a web build.
-    let native = releases
+    let native_rel: Option<Release> = releases
         .iter()
         .find(|r| (pre || !r.prerelease) && !r.native.is_empty())
-        .map(|r| r.native.clone())
-        .unwrap_or_default();
-    let update_available = match (latest, &rec.active) {
-        (Some(l), Some(a)) => &l.version != a && !rec.installed.iter().any(|i| i.version == l.version),
-        (Some(_), None) => true,
-        _ => false,
+        .cloned()
+        .or_else(|| latest.clone().filter(|l| !l.native.is_empty()));
+    let stems = github::stems_for(&def);
+    let stem_refs: Vec<&str> = stems.iter().map(String::as_str).collect();
+    let downloads = native_rel.as_ref().map(|r| github::downloads_for(r, &stem_refs)).unwrap_or_default();
+    let native = native_rel.map(|r| r.native).unwrap_or_default();
+
+    let installed = rec.active.as_deref().map(|v| CoreInstalled {
+        version: version::parse(v),
+        source: InstallSource::Launcher,
+        location: String::new(),
+        package: None,
+    });
+    let lat = match &latest {
+        Some(l) => Latest::Found { version: l.semver.as_ref(), has_asset: true },
+        None if !releases.is_empty() => Latest::Found { version: None, has_asset: false },
+        None if rec.last_error.is_some() => Latest::Failed,
+        None if rec.last_check.is_some() => Latest::NoRelease,
+        None => Latest::Pending,
+    };
+    let mut s = status::status(installed.as_ref(), lat);
+    let pinned = s == AppStatus::UpdateAvailable && latest.as_ref().map(|l| rec.installed.iter().any(|i| i.version == l.version)).unwrap_or(false);
+    if pinned {
+        s = AppStatus::UpToDate;
+    }
+    let status_str = match s {
+        AppStatus::Checking => "checking",
+        AppStatus::Available => "available",
+        AppStatus::UpToDate => "up_to_date",
+        AppStatus::UpdateAvailable => "update_available",
+        AppStatus::Installed => "installed",
+        AppStatus::Unavailable if rec.last_error.is_some() && releases.is_empty() => "failed",
+        AppStatus::Unavailable => "unavailable",
+        AppStatus::NoRelease => "no_release",
+    };
+
+    let suite = CraftApp::by_id(&def.id);
+    let suite_index = catalog::SUITE.iter().position(|a| a.id == def.id);
+    let group = match suite.map(|a| a.group) {
+        Some(catalog::AppGroup::Classic) => "classic",
+        Some(catalog::AppGroup::New) => "new",
+        None => "community",
     };
     Some(AppView {
         id: def.id.clone(),
         name: def.name.clone(),
-        description: def.description.clone(),
+        tagline: def.description.clone(),
         repo: def.repo.clone(),
         // Served (and cached) by this server so browsers never contact GitHub for icons.
         icon: format!("/api/apps/{}/icon", def.id),
+        group,
+        number: suite_index.map(|i| i + 1).unwrap_or(0),
+        color: suite.map(|a| hex(a.color)),
+        ink_light: suite.map(|a| hex(a.ink_light)),
+        ink_dark: suite.map(|a| hex(a.ink_dark)),
+        inspired_by: if st.cfg.show_inspired_by { config::inspired_by(&def.id) } else { None },
+        website: suite.map(|a| a.website()),
+        has_details: details::AppDetails::by_id(&def.id).is_some(),
         custom: def.custom,
+        status: status_str,
+        pinned,
         active: rec.active.clone(),
         installed: rec.installed.clone(),
         auto_update: rec.auto_update,
         include_prerelease: pre,
-        latest: latest.map(|l| LatestView {
-            tag: l.tag.clone(),
-            version: l.version.clone(),
-            prerelease: l.prerelease,
-            published_at: l.published_at.clone(),
-            url: l.url.clone(),
-            description: l.body.clone().unwrap_or_default(),
-        }),
-        update_available,
+        latest: latest.map(|l| LatestView { tag: l.tag, version: l.version, prerelease: l.prerelease, published_at: l.published_at, url: l.url }),
+        downloads,
         native,
         job: st.job(id),
         last_check: rec.last_check,
         last_error: rec.last_error.clone(),
-        checked: rec.last_check.is_some(),
     })
 }
 
@@ -118,17 +178,40 @@ pub async fn me(State(st): State<AppState>, Extension(user): Extension<SessionUs
         "update_interval_minutes": st.cfg.update_interval_minutes,
         "build_time": build_info::BUILD_TIME,
         "auth_mode": match st.auth().mode { AuthMode::Oidc => "oidc", AuthMode::Headers => "headers", AuthMode::None => "none" },
+        "brand": { "name": brand::PRODUCT, "wordmark": brand::WORDMARK, "tag": brand::TAG, "requested_with": brand::REQUESTED_WITH, "repo": brand::REPO_URL },
+        "show_inspired_by": st.cfg.show_inspired_by,
+        "feed_enabled": st.cfg.feed_url.is_some(),
+        "suite": { "website": catalog::WEBSITE_URL, "github": catalog::GITHUB_URL, "discord": catalog::DISCORD_URL, "social": catalog::SOCIAL },
     }))
 }
 
-pub async fn list_apps(State(st): State<AppState>) -> Json<Vec<AppView>> {
+fn notice_json(n: &artcraft_launcher_core::feed::Notice) -> serde_json::Value {
+    json!({ "id": n.id, "title": n.title, "body": n.body, "link": n.link, "created_at": n.created_at })
+}
+
+pub async fn list_apps(State(st): State<AppState>) -> Json<serde_json::Value> {
     let mut out = vec![];
     for def in st.catalog_snapshot() {
         if let Some(v) = app_view(&st, &def.id).await {
             out.push(v);
         }
     }
-    Json(out)
+    let (announcements, alerts) = match st.feed.lock().unwrap().as_ref() {
+        Some((_, f)) => (f.announcements.iter().map(notice_json).collect::<Vec<_>>(), f.alerts.iter().map(notice_json).collect::<Vec<_>>()),
+        None => (vec![], vec![]),
+    };
+    let limited = (*st.rate_limited_until.lock().unwrap()).filter(|t| *t > now());
+    Json(json!({
+        "apps": out,
+        "meta": {
+            "last_check": *st.last_full_check.lock().unwrap(),
+            "sources": *st.last_sources.lock().unwrap(),
+            "rate_limited_until": limited,
+            "now": now(),
+            "announcements": announcements,
+            "alerts": alerts,
+        }
+    }))
 }
 
 #[derive(Deserialize)]
@@ -316,12 +399,40 @@ pub async fn refresh(
     }
 }
 
+#[derive(Serialize)]
+struct ReleaseView {
+    tag: String,
+    version: String,
+    name: String,
+    prerelease: bool,
+    published_at: Option<i64>,
+    url: String,
+    notes: String,
+    web: Option<serde_json::Value>,
+    native: usize,
+}
+
 pub async fn releases(State(st): State<AppState>, Path(id): Path<String>) -> Response {
     if st.app_def(&id).is_none() {
         return err(StatusCode::NOT_FOUND, "unknown app");
     }
     match st.releases(&id, false).await {
-        Ok(list) => Json::<Vec<Release>>(list).into_response(),
+        Ok(list) => Json(
+            list.into_iter()
+                .map(|r| ReleaseView {
+                    web: r.web.as_ref().map(|w| json!({ "name": w.name, "size": w.size, "verified": w.sha256.is_some() || r.sums_url.is_some() })),
+                    native: r.native.len(),
+                    tag: r.tag,
+                    version: r.version,
+                    name: r.name,
+                    prerelease: r.prerelease,
+                    published_at: r.published_at,
+                    url: r.url,
+                    notes: r.notes,
+                })
+                .collect::<Vec<_>>(),
+        )
+        .into_response(),
         Err(e) => err(StatusCode::BAD_GATEWAY, format!("{e:#}")),
     }
 }
@@ -673,32 +784,147 @@ pub async fn disable_auth(State(st): State<AppState>, Extension(user): Extension
     Json(auth_view(&st)).into_response()
 }
 
-/// Icon for an app, fetched once by the server and cached on disk; failures are remembered for a day.
+/// Install every app that has an update. Runs one install after the other.
+pub async fn update_all(State(st): State<AppState>, Extension(user): Extension<SessionUser>, headers: HeaderMap) -> Response {
+    if let Err(r) = guard_admin(&user, &headers) {
+        return r;
+    }
+    let mut targets = vec![];
+    for def in st.catalog_snapshot() {
+        if st.job_running(&def.id) {
+            continue;
+        }
+        if let Some(v) = app_view(&st, &def.id).await {
+            if v.status == "update_available" {
+                if let Some(l) = v.latest {
+                    targets.push((def.id.clone(), l.tag));
+                }
+            }
+        }
+    }
+    let n = targets.len();
+    let st2 = st.clone();
+    tokio::spawn(async move { manager::update_all(st2, targets).await });
+    (StatusCode::ACCEPTED, Json(json!({ "queued": n }))).into_response()
+}
+
+/// Stop a running (or queued) install.
+pub async fn cancel(
+    State(st): State<AppState>,
+    Extension(user): Extension<SessionUser>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    if let Err(r) = guard_admin(&user, &headers) {
+        return r;
+    }
+    if st.app_def(&id).is_none() {
+        return err(StatusCode::NOT_FOUND, "unknown app");
+    }
+    if !st.job_running(&id) {
+        return err(StatusCode::CONFLICT, "nothing is installing");
+    }
+    st.cancels.lock().unwrap().insert(id.clone());
+    // A queued app has no download loop to notice the flag, so mark it here.
+    if st.job(&id).map(|j| j.state == "queued").unwrap_or(false) {
+        st.set_job(&id, |j| {
+            j.state = "cancelled".into();
+            j.message = "Install cancelled".into();
+        });
+    }
+    StatusCode::ACCEPTED.into_response()
+}
+
+pub async fn uninstall(
+    State(st): State<AppState>,
+    Extension(user): Extension<SessionUser>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    if let Err(r) = guard_admin(&user, &headers) {
+        return r;
+    }
+    if st.app_def(&id).is_none() {
+        return err(StatusCode::NOT_FOUND, "unknown app");
+    }
+    if st.job_running(&id) {
+        return err(StatusCode::CONFLICT, "an install is running for this app");
+    }
+    match manager::uninstall(&st, &id).await {
+        Ok(()) => Json(app_view(&st, &id).await).into_response(),
+        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")),
+    }
+}
+
+/// The hand-written product page of a suite app (compiled into the launcher core).
+pub async fn app_details(Path(id): Path<String>) -> Response {
+    let Some(d) = details::AppDetails::by_id(&id) else {
+        return err(StatusCode::NOT_FOUND, "no details for this app");
+    };
+    Json(json!({
+        "headline": d.headline,
+        "paragraphs": d.paragraphs().collect::<Vec<_>>(),
+        "features": d.features.iter().map(|f| json!({ "title": f.title, "text": f.text })).collect::<Vec<_>>(),
+        "shots": d.shots.iter().map(|s| json!({ "key": s.key, "caption": s.caption, "url": format!("/api/apps/{}/shots/{}", d.id, s.key) })).collect::<Vec<_>>(),
+        "platforms": d.platforms,
+    }))
+    .into_response()
+}
+
+/// A details-page picture, fetched once by the server and cached on disk.
+pub async fn screenshot(State(st): State<AppState>, Path((id, key)): Path<(String, String)>) -> Response {
+    let Some(d) = details::AppDetails::by_id(&id) else { return StatusCode::NOT_FOUND.into_response() };
+    let Some(url) = d.screenshot_url(&key) else { return StatusCode::NOT_FOUND.into_response() };
+    if !is_safe_name(&key) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let dir = st.cfg.data_dir.join("shots").join(details::SCREENSHOTS_REV).join(&id);
+    let file = dir.join(format!("{key}.jpg"));
+    let headers = [(axum::http::header::CONTENT_TYPE, "image/jpeg"), (axum::http::header::CACHE_CONTROL, "private, max-age=604800")];
+    if let Ok(bytes) = tokio::fs::read(&file).await {
+        return (headers, bytes).into_response();
+    }
+    let got = match st.http.get(&url).send().await.and_then(|r| r.error_for_status()) {
+        Ok(r) => r.bytes().await.ok().filter(|b| b.len() <= details::MAX_SCREENSHOT_BYTES && details::looks_like_jpeg(b)),
+        Err(_) => None,
+    };
+    match got {
+        Some(bytes) => {
+            let _ = tokio::fs::create_dir_all(&dir).await;
+            let _ = tokio::fs::write(&file, &bytes).await;
+            (headers, bytes.to_vec()).into_response()
+        }
+        None => (StatusCode::NOT_FOUND, [(axum::http::header::CACHE_CONTROL, "private, max-age=300")]).into_response(),
+    }
+}
+
+/// Icon for an app. Built-in apps ship theirs inside the binary when `ui/icons/<id>.png` exists; others are fetched once by the server
+/// from the app's repository and cached on disk (failures are remembered for a day).
 pub async fn icon(State(st): State<AppState>, Path(id): Path<String>) -> Response {
     let Some(def) = st.app_def(&id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    let headers = [(axum::http::header::CONTENT_TYPE, "image/png"), (axum::http::header::CACHE_CONTROL, "private, max-age=86400")];
+    // Built-in apps (the suite, SolidCraft) use the icon bundled in the binary when there is one.
+    if !def.custom {
+        if let Some(f) = crate::assets::file(&format!("icons/{}.png", def.id)) {
+            return (headers, f.contents().to_vec()).into_response();
+        }
+    }
     let dir = st.cfg.data_dir.join("icons");
     let file = dir.join(format!("{id}.png"));
     let miss = dir.join(format!("{id}.none"));
-    let headers = [
-        (axum::http::header::CONTENT_TYPE, "image/png"),
-        (axum::http::header::CACHE_CONTROL, "private, max-age=86400"),
-    ];
     if let Ok(bytes) = tokio::fs::read(&file).await {
         return (headers, bytes).into_response();
     }
     if let Ok(meta) = tokio::fs::metadata(&miss).await {
         let fresh = meta.modified().ok().and_then(|m| m.elapsed().ok()).map(|e| e.as_secs() < 86400).unwrap_or(false);
         if fresh {
-            return (StatusCode::NOT_FOUND, [(axum::http::header::CACHE_CONTROL, "private, max-age=3600")]).into_response();
+            return (StatusCode::NO_CONTENT, [(axum::http::header::CACHE_CONTROL, "private, max-age=3600")]).into_response();
         }
     }
     let url = def.icon.clone().unwrap_or_else(|| {
-        format!(
-            "https://raw.githubusercontent.com/{}/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.{}.png",
-            def.repo, def.id
-        )
+        format!("https://raw.githubusercontent.com/{}/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.{}.png", def.repo, def.id)
     });
     let _ = tokio::fs::create_dir_all(&dir).await;
     let got = match st.http.get(&url).send().await.and_then(|r| r.error_for_status()) {
@@ -712,7 +938,7 @@ pub async fn icon(State(st): State<AppState>, Path(id): Path<String>) -> Respons
         }
         None => {
             let _ = tokio::fs::write(&miss, b"").await;
-            (StatusCode::NOT_FOUND, [(axum::http::header::CACHE_CONTROL, "private, max-age=3600")]).into_response()
+            (StatusCode::NO_CONTENT, [(axum::http::header::CACHE_CONTROL, "private, max-age=3600")]).into_response()
         }
     }
 }
