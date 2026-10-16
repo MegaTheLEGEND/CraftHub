@@ -5,7 +5,8 @@ downloads, verifies and hosts the **web builds** of the suite apps (PhotoCraft, 
 keeps them updated, and gives visitors the right desktop download for their platform. Rust/axum,
 one small container, optional Authentik/OIDC SSO.
 
-> **Notice from a human:** _(paste your original CraftHub paragraph here; it was not in the files I received.)_
+<img width="1920" height="1694" alt="image" src="https://github.com/user-attachments/assets/5ea90e54-5d05-4c05-8078-e804ff4de812" />
+
 
 ## Quick start
 
