@@ -5,7 +5,8 @@ downloads, verifies and hosts the **web builds** of the suite apps (PhotoCraft, 
 keeps them updated, and gives visitors the right desktop download for their platform. Rust/axum,
 one small container, optional Authentik/OIDC SSO.
 
-<img width="1920" height="1694" alt="image" src="https://github.com/user-attachments/assets/5ea90e54-5d05-4c05-8078-e804ff4de812" />
+<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/4f6c6eff-9a6f-411a-8d89-3b06393feff0" />
+
 
 
 ## Quick start
