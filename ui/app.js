@@ -423,11 +423,33 @@ function focusSig(el) {
 function render() {
   const sig = document.activeElement !== document.body ? focusSig(document.activeElement) : null;
   renderAll();
+  if (MENU) placeMenu();
   if (sig && document.activeElement === document.body) {
     const next = $(`#hright ${sig}`) || $(`#chips ${sig}`) || $(`#content ${sig}`);
     if (next) next.focus();
   }
 }
+/* The menu opens upward by default. When that would put it under the sticky header (or outside the
+   table's scroll box), open it downward from its button instead. */
+function placeMenu() {
+  const m = $('.menu');
+  if (!m) return;
+  m.classList.remove('down');
+  m.style.top = m.style.bottom = '';
+  const hdr = $('header.bar');
+  let limit = hdr ? hdr.getBoundingClientRect().bottom : 0;
+  const wrap = m.closest('.tablewrap');
+  if (wrap) limit = Math.max(limit, wrap.getBoundingClientRect().top);
+  if (m.getBoundingClientRect().top >= limit + 4) return; // room to drop up
+  const btn = $(`[data-act="menu"][data-id="${CSS.escape(m.dataset.menu || '')}"]`), host = m.offsetParent;
+  if (!btn || !host) return;
+  const b = btn.getBoundingClientRect(), h = host.getBoundingClientRect();
+  m.classList.add('down');
+  m.style.bottom = 'auto';
+  m.style.top = `${b.bottom - h.top - host.clientTop + 4}px`;
+  m.scrollIntoView({ block: 'nearest' });
+}
+window.addEventListener('resize', () => { if (MENU) placeMenu(); });
 function focusMenu() { const m = $('.menu'); const f = m && $('a, button', m); if (f) f.focus(); }
 function renderAll() {
   drawChrome(); drawChips(); drawNotices(); drawFooter();
@@ -656,23 +678,34 @@ async function openDetails(id) {
   const dx = $('.x', dr); if (dx) dx.focus();
   try { DET = await api(`/api/apps/${encodeURIComponent(id)}/details`); } catch (e) { $('.db', dr).innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
   const p = primary(a);
-  const lat = a.latest;
+  const lat = a.latest, dl = a.downloads && a.downloads[PLAT];
+  const btn = p.href ? `<a class="btn ${p.cls || ''}" href="${esc(p.href)}" target="_blank" rel="noopener">${esc(p.label)}</a>` : `<button class="btn ${p.cls || ''}" ${p.disabled ? 'disabled' : ''} ${p.act ? `data-act="${p.act}" data-id="${esc(a.id)}" data-tag="${esc(p.tag || '')}"` : ''}>${esc(p.label)}</button>`;
+  const tile = (k, v, cls = '') => `<div class="tile ${cls}"><span>${esc(k)}</span><b>${v}</b></div>`;
   $('.db', dr).innerHTML = `
-    <div class="hero" style="${appStyle(a)}">${iconHTML(a)}<div><h2 class="name">${nameHTML(a)}</h2><div class="headline">${esc(DET.headline)}</div></div></div>
-    <div class="row">${p.href ? `<a class="btn ${p.cls || ''}" href="${esc(p.href)}" target="_blank" rel="noopener">${esc(p.label)}</a>` : `<button class="btn ${p.cls || ''}" ${p.disabled ? 'disabled' : ''} ${p.act ? `data-act="${p.act}" data-id="${esc(a.id)}" data-tag="${esc(p.tag || '')}"` : ''}>${esc(p.label)}</button>`}
-      ${a.website ? `<a class="btn" href="${esc(a.website)}" target="_blank" rel="noopener">${esc(t('Learn more'))} ↗</a>` : ''}</div>
-    ${DET.paragraphs.map(x => `<p>${esc(x)}</p>`).join('')}
-    <div class="shots" id="shots"></div>
-    <h4>${esc(t('Features'))}</h4>
-    <ul class="feat" style="${appStyle(a)}">${DET.features.map(f => `<li><b>${esc(f.title)}</b><span>${esc(f.text)}</span></li>`).join('')}</ul>
-    <h4>${esc(t('Latest release'))}</h4>
-    <dl class="facts">
-      <dt>${esc(t('Version'))}</dt><dd>${lat ? esc(verOf(lat.version)) : '—'}</dd>
-      <dt>${esc(t('Released'))}</dt><dd>${lat && lat.published_at ? esc(fmtDate(lat.published_at)) : '—'}</dd>
-      <dt>${esc(t('Platforms'))}</dt><dd>${esc(DET.platforms)}</dd>
-      <dt>${esc(t('Releases'))}</dt><dd><a href="https://github.com/${esc(a.repo)}/releases" target="_blank" rel="noopener">${esc(t('All releases'))} ↗</a></dd>
-    </dl>`;
+    <div class="hero" style="${appStyle(a)}">${iconHTML(a)}<div class="htext"><h2 class="name">${nameHTML(a)}</h2><div class="headline">${esc(DET.headline)}</div>${lat ? `<div class="small faint">${esc(t('Version'))} ${esc(verOf(lat.version))}${lat.published_at ? ' · ' + esc(fmtDate(lat.published_at)) : ''}</div>` : ''}</div>
+      <div class="heroact">${btn}</div></div>
+    <div class="row">${a.website ? `<a class="btn" href="${esc(a.website)}" target="_blank" rel="noopener">${esc(t('Website'))} ↗</a>` : ''}${/^[\w.-]+\/[\w.-]+$/.test(a.repo) ? `<a class="btn" href="https://github.com/${esc(a.repo)}" target="_blank" rel="noopener">${esc(t('GitHub'))} ↗</a>` : ''}<a class="btn" href="https://github.com/${esc(a.repo)}/releases" target="_blank" rel="noopener">${esc(t('Releases'))} ↗</a></div>
+    <div class="dgrid">
+      <div class="dleft">
+        ${DET.paragraphs.map(x => `<p>${esc(x)}</p>`).join('')}
+        <div class="shots" id="shots"></div>
+        <h4>${esc(t('Features'))}</h4>
+        <ul class="feat" style="${appStyle(a)}">${DET.features.map((f, i) => `<li><b><i>${String(i + 1).padStart(2, '0')}</i>${esc(f.title)}</b><span>${esc(f.text)}</span></li>`).join('')}</ul>
+      </div>
+      <div class="dright">
+        <h4>${esc(t('Latest release'))}</h4>
+        <div class="tiles">${tile(t('Version'), lat ? esc(verOf(lat.version)) : '—')}${tile(t('Released'), lat && lat.published_at ? esc(fmtDate(lat.published_at)) : '—')}${dl && dl.size ? tile(t('Download'), esc(fmtSize(dl.size))) : ''}${tile(t('Platforms'), esc(DET.platforms), 'wide')}</div>
+        <div class="md relnotes" id="relNotes"></div>
+      </div>
+    </div>`;
   drawShots();
+  if (lat) {
+    try {
+      const rels = await api(`/api/apps/${encodeURIComponent(id)}/releases`);
+      const r = rels.find(x => x.tag === lat.tag) || rels[0], box = $('#relNotes');
+      if (drawerId === id && box && r && r.notes) box.innerHTML = md(r.notes);
+    } catch (e) { /* notes are optional here; the menu's Release notes shows errors */ }
+  }
 }
 function drawShots() {
   const box = $('#shots'); if (!box || !DET || !DET.shots.length) return;
@@ -715,7 +748,15 @@ async function doCheck() {
 
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]');
-  if (!el) { if (MENU && !e.target.closest('.menu')) { MENU = null; render(); } return; }
+  if (!el) {
+    if (MENU && !e.target.closest('.menu')) { MENU = null; render(); return; }
+    // A click on the card itself (not on a link, button or the menu) opens its details.
+    const card = e.target.closest('[data-card]');
+    if (card && !e.target.closest('a, button, input, select, textarea, label, .menu') && !(window.getSelection && String(window.getSelection()))) {
+      MENU = null; openDetails(card.dataset.card);
+    }
+    return;
+  }
   const act = el.dataset.act, id = el.dataset.id;
   if (act !== 'menu' && MENU && !el.closest('.menu')) MENU = null;
   switch (act) {
