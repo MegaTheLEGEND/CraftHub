@@ -298,7 +298,7 @@ const EXTRA_BUILTIN: &[(&str, &str, &str, &str, &str)] = &[(
     "SolidCraft",
     "Parametric 3D CAD in pure Rust (community app)",
     "tangency-labs/solidcraft",
-    "https://raw.githubusercontent.com/tangency-labs/solidcraft/main/assets/icons/app/linux/exports/hicolor/256x256/apps/ai.storyteller.solidcraft.png",
+    "https://raw.githubusercontent.com/tangency-labs/solidcraft/main/assets/icons/app/linux/exports/hicolor/128x128/apps/io.tangencylabs.solidcraft.png",
 )];
 
 /// The commercial app each suite app is an alternative to (shown as "Like ...").
@@ -317,6 +317,7 @@ pub fn inspired_by(id: &str) -> Option<&'static str> {
         "soundcraft" => "Pro Tools",
         "deckcraft" => "Microsoft PowerPoint",
         "figcraft" => "Figma",
+        "texturecraft" => "Adobe Substance 3D Painter",
         _ => return None,
     })
 }
@@ -489,12 +490,13 @@ mod tests {
     fn builtin_catalog_is_the_whole_suite_plus_solidcraft() {
         let dir = std::env::temp_dir().join("artcraft-server-test-nonexistent");
         let apps = load_catalog(&dir).unwrap();
-        assert_eq!(apps.len(), 14);
+        assert_eq!(apps.len(), 15);
         let s = apps.iter().find(|a| a.id == "solidcraft").expect("solidcraft is built in");
         assert_eq!(s.repo, "tangency-labs/solidcraft");
         assert!(s.icon.as_deref().is_some_and(|u| u.contains("tangency-labs/solidcraft")));
         assert!(!s.custom);
         assert!(apps.iter().any(|a| a.id == "figcraft"));
+        assert!(apps.iter().any(|a| a.id == "texturecraft" && a.repo == "storytold/texturecraft"));
         assert_eq!(inspired_by("photocraft"), Some("Adobe Photoshop"));
     }
 

@@ -1,4 +1,4 @@
-//! The Craft App Suite: the thirteen apps the launcher knows about.
+//! The Craft App Suite: the fourteen apps the launcher knows about.
 //!
 //! The list is data so a later version can fetch it from an API; [`SUITE`] is the built-in copy.
 //!
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 pub enum AppGroup {
     /// The seven original apps.
     Classic,
-    /// The six apps added after them.
+    /// The seven apps added after them.
     New,
 }
 
@@ -94,8 +94,8 @@ const fn app(
     CraftApp { id, name, tagline, group, color, ink_light, ink_dark, repo, former_ids: &[], former_names: &[] }
 }
 
-/// The Craft App Suite, in display order: the seven classic apps, then the six new ones.
-pub const SUITE: [CraftApp; 13] = [
+/// The Craft App Suite, in display order: the seven classic apps, then the seven new ones.
+pub const SUITE: [CraftApp; 14] = [
     app(
         "photocraft",
         "PhotoCraft",
@@ -136,7 +136,7 @@ pub const SUITE: [CraftApp; 13] = [
             "PdfCraft",
             "Reading, organizing and protecting PDFs",
             AppGroup::Classic,
-            [[0x12, 0xa5, 0x8a], [0x0a, 0x75, 0x63], [0x3f, 0xd6, 0xb8]],
+            [[0xb7, 0x02, 0x28], [0x8a, 0x01, 0x1e], [0xff, 0x5c, 0x78]],
             "storytold/pdfcraft",
         )
     },
@@ -204,6 +204,14 @@ pub const SUITE: [CraftApp; 13] = [
         [[0x02, 0xda, 0x96], [0x04, 0x7a, 0x56], [0x4f, 0xe8, 0xb6]],
         "storytold/figcraft",
     ),
+    app(
+        "texturecraft",
+        "TextureCraft",
+        "3D texture painting",
+        AppGroup::New,
+        [[0xc2, 0x67, 0x2b], [0x8f, 0x46, 0x12], [0xf0, 0x9a, 0x5e]],
+        "storytold/texturecraft",
+    ),
 ];
 
 /// ArtCraft's website.
@@ -247,9 +255,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn suite_has_seven_classic_and_six_new_apps_with_unique_ids() {
+    fn suite_has_seven_classic_and_seven_new_apps_with_unique_ids() {
         assert_eq!(SUITE.iter().filter(|a| a.group == AppGroup::Classic).count(), 7);
-        assert_eq!(SUITE.iter().filter(|a| a.group == AppGroup::New).count(), 6);
+        assert_eq!(SUITE.iter().filter(|a| a.group == AppGroup::New).count(), 7);
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();

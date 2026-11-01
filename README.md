@@ -27,7 +27,7 @@ Apps are hosted at `/apps/<id>/`; any installed version can be previewed at `/ve
 
 ## Features
 
-- Catalog of the 13 suite apps plus SolidCraft, and custom GitHub apps (Add app).
+- Catalog of the 14 suite apps (including TextureCraft) plus SolidCraft, and custom GitHub apps (Add app).
 - Install, activate, roll back, remove versions; cancel running installs; uninstall; Update all.
 - Auto-update loop with per-app auto-update and pre-release switches, `KEEP_VERSIONS` pruning,
   SHA-256 verification against GitHub digests / `SHA256SUMS.txt`.

@@ -14,7 +14,7 @@
 # Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
 # name "Craft App Suite", app names (PhotoCraft, LightCraft, FilmCraft,
 # DesignCraft, VectorCraft, PdfCraft, EffectCraft, WordCraft, DeckCraft, GridCraft, CADCraft,
-# SoundCraft, FigCraft), "GitHub", "Discord", "Finder", "makers".
+# SoundCraft, FigCraft, TextureCraft), "GitHub", "Discord", "Finder", "makers".
 # Trailing "…" (U+2026) must be preserved. Placeholders must appear in the translation:
 # {ago}, {a}, {b}, {count}, {date}, {day}, {done}, {e}, {f}, {installed}, {latest}, {min},
 # {month}, {name}, {n}, {os}, {platform}, {sources}, {total}, {version}, {v}, {year}.
@@ -167,6 +167,7 @@ gridcraft	Spreadsheets and data	Hojas de cálculo y datos
 cadcraft	Computer-aided design and drafting	CAD: diseño y dibujo técnico
 soundcraft	Recording, editing and mixing audio	Grabación, edición y mezcla de audio
 figcraft	Interface design and prototyping	Diseño de interfaces y prototipos
+texturecraft	3D texture painting	Pintura de texturas 3D
 month	Jan	ene.
 month	Feb	feb.
 month	Mar	mar.

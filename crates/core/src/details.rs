@@ -67,7 +67,7 @@ pub fn looks_like_jpeg(bytes: &[u8]) -> bool {
 /// Where every Craft App runs (getartcraft.com lists the same for each of them).
 const PLATFORMS: &str = "macOS, Windows, Linux, FreeBSD, web";
 
-pub const DETAILS: [AppDetails; 13] = [
+pub const DETAILS: [AppDetails; 14] = [
     AppDetails {
         id: "photocraft",
         headline: "The image editor you already know how to use.",
@@ -398,6 +398,23 @@ pub const DETAILS: [AppDetails; 13] = [
                 "Your files",
                 "Plain .figcraft files on your own disk. SVG, PNG, JPEG, WebP and PDF in and out, and .fig files open, best effort.",
             ),
+        ],
+        shots: &[],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "texturecraft",
+        headline: "3D texture painting, in pure Rust.",
+        about: "Paint PBR materials straight onto your models in layers with masks, bake mesh maps, drive smart \
+                materials from them and export textures for any engine. A native app that also runs in the browser, \
+                with no account and no telemetry. In active development.",
+        features: &[
+            feature("Layers and masks", "Texture sets with a layer stack, per-channel blending, masks, generators and smart materials."),
+            feature("Paint in 3D", "Brush stamps live on the model's surface, so strokes flow across UV seams and stay off the back."),
+            feature("Bake mesh maps", "Ambient occlusion, curvature, thickness and more, ray traced on the GPU."),
+            feature("Path-traced preview", "Rendering mode shows your textures path traced on the GPU, with a denoiser."),
+            feature("Open formats", "glTF, FBX, COLLADA, USD, Alembic, OBJ, PLY and STL in; PNG, JPEG, TGA, TIFF, EXR and HDR out, with UDIM tiles."),
+            feature("Agent-native", "Every command can be driven from the CLI, a JSON control channel or an MCP server."),
         ],
         shots: &[],
         platforms: PLATFORMS,
