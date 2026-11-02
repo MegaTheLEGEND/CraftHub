@@ -14,6 +14,7 @@ RUN mkdir -p src crates/core/src ui i18n \
 COPY crates crates
 COPY src src
 COPY ui ui
+COPY assets assets
 COPY i18n i18n
 RUN touch src/main.rs crates/core/src/lib.rs \
     && cargo build --release --locked \

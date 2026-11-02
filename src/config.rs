@@ -291,16 +291,6 @@ struct CatalogFile {
     app: Vec<AppDef>,
 }
 
-/// Apps outside the ArtCraft suite that ship with the image: (id, name, description, repo, icon URL).
-/// The icon is fetched once by the server and cached, unless `ui/icons/<id>.png` is bundled.
-const EXTRA_BUILTIN: &[(&str, &str, &str, &str, &str)] = &[(
-    "solidcraft",
-    "SolidCraft",
-    "Parametric 3D CAD in pure Rust (community app)",
-    "tangency-labs/solidcraft",
-    "https://raw.githubusercontent.com/tangency-labs/solidcraft/main/assets/icons/app/linux/exports/hicolor/128x128/apps/io.tangencylabs.solidcraft.png",
-)];
-
 /// The commercial app each suite app is an alternative to (shown as "Like ...").
 pub fn inspired_by(id: &str) -> Option<&'static str> {
     Some(match id {
@@ -322,17 +312,44 @@ pub fn inspired_by(id: &str) -> Option<&'static str> {
     })
 }
 
+/// The order official apps are listed and numbered in. The launcher core's own order is not used, so
+/// re-syncing `crates/core` never reshuffles it. An official app missing here (one a later core adds)
+/// is listed after these, in the core's order; community apps always come last.
+pub const DISPLAY_ORDER: [&str; 15] = [
+    "photocraft",
+    "vectorcraft",
+    "filmcraft",
+    "lightcraft",
+    "pdfcraft",
+    "effectcraft",
+    "designcraft",
+    "figcraft",
+    "texturecraft",
+    "wordcraft",
+    "soundcraft",
+    "deckcraft",
+    "cadcraft",
+    "gridcraft",
+    "craft-anything",
+];
+
+/// 1-based place of an official app in the list, or `None` for an app outside it.
+pub fn display_number(id: &str) -> Option<usize> {
+    DISPLAY_ORDER.iter().position(|x| *x == id).map(|i| i + 1)
+}
+
 fn builtin_apps() -> Vec<AppDef> {
-    let suite = artcraft_launcher_core::SUITE.iter().map(|a| (a.id, a.name, a.tagline, a.repo, ""));
-    suite
-        .chain(EXTRA_BUILTIN.iter().copied())
-        .map(|(id, name, desc, repo, icon)| AppDef {
-            id: id.into(),
-            name: name.into(),
-            repo: repo.into(),
-            description: desc.into(),
+    // The whole built-in list, community apps (SolidCraft) included, comes from the launcher core.
+    let mut core: Vec<_> = artcraft_launcher_core::SUITE.iter().collect();
+    core.sort_by_key(|a| display_number(a.id).unwrap_or(usize::MAX)); // stable: unlisted apps keep core order
+    core.into_iter()
+        .map(|a| AppDef {
+            id: a.id.into(),
+            name: a.name.into(),
+            repo: a.repo.into(),
+            description: a.tagline.into(),
             web_asset_contains: default_marker(),
-            icon: (!icon.is_empty()).then(|| icon.to_string()),
+            icon: None,
             disabled: false,
             custom: false,
         })
@@ -487,14 +504,14 @@ mod tests {
     }
 
     #[test]
-    fn builtin_catalog_is_the_whole_suite_plus_solidcraft() {
+    fn builtin_catalog_is_the_whole_suite_including_community_apps() {
         let dir = std::env::temp_dir().join("artcraft-server-test-nonexistent");
         let apps = load_catalog(&dir).unwrap();
-        assert_eq!(apps.len(), 15);
+        assert_eq!(apps.len(), 16);
         let s = apps.iter().find(|a| a.id == "solidcraft").expect("solidcraft is built in");
         assert_eq!(s.repo, "tangency-labs/solidcraft");
-        assert!(s.icon.as_deref().is_some_and(|u| u.contains("tangency-labs/solidcraft")));
         assert!(!s.custom);
+        assert!(apps.iter().any(|a| a.id == "craft-anything" && a.repo == "storytold/craft-anything"));
         assert!(apps.iter().any(|a| a.id == "figcraft"));
         assert!(apps.iter().any(|a| a.id == "texturecraft" && a.repo == "storytold/texturecraft"));
         assert_eq!(inspired_by("photocraft"), Some("Adobe Photoshop"));
@@ -558,6 +575,25 @@ mod tests {
         assert!(w.custom && w.repo == "someone/widget");
         assert_eq!(again.iter().filter(|a| a.custom).count(), 1);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn display_order_lists_every_official_app_once() {
+        use artcraft_launcher_core::{SUITE, catalog::AppKind};
+        let mut ids: Vec<_> = DISPLAY_ORDER.to_vec();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), DISPLAY_ORDER.len(), "an app is listed twice");
+        for a in SUITE.iter().filter(|a| a.kind == AppKind::Official) {
+            assert!(display_number(a.id).is_some(), "{} is missing from DISPLAY_ORDER", a.id);
+        }
+        for id in DISPLAY_ORDER {
+            assert!(SUITE.iter().any(|a| a.id == id && a.kind == AppKind::Official), "{id} is not an official app");
+        }
+        let apps = builtin_apps();
+        let order: Vec<_> = apps.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(&order[..15], &DISPLAY_ORDER[..]);
+        assert_eq!(order[15], "solidcraft");
     }
 
     #[test]

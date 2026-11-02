@@ -212,7 +212,7 @@ function visible() {
   let list = APPS.filter(a => S.filter === 'hidden' ? isHidden(a) : !isHidden(a));
   if (S.filter !== 'hidden') list = list.filter(a => filterOf(a, S.filter));
   if (q) list = list.filter(a => [a.name, a.tagline, a.id, a.inspired_by || ''].some(x => String(x).toLowerCase().includes(q)));
-  const grp = { classic: 0, new: 0, community: 1 }; // classic and new apps are one numbered suite
+  const grp = { official: 0, community: 1 }; // official apps are one numbered suite
   const rank = a => ({ update_available: 0, available: 1, up_to_date: 2, installed: 2, unavailable: 3, failed: 3, no_release: 4, checking: 5 }[a.status] ?? 5);
   const cmp = {
     suite: (x, y) => grp[x.group] - grp[y.group] || (x.number || 999) - (y.number || 999) || (x.custom - y.custom) || x.name.localeCompare(y.name),
@@ -387,7 +387,7 @@ function cardHTML(a) {
   return `<article class="card" data-card="${esc(a.id)}" style="${appStyle(a)}">
     <div class="top"><span class="num">${num}</span><span class="links">${links.join('')}</span></div>
     <div class="inner">
-      <div class="ident">${iconHTML(a)}<div class="t"><h2 class="name">${nameHTML(a)}</h2><div class="tagline">${esc(tagline)}</div>${a.inspired_by ? `<div class="like">${esc(t('Like {name}', { name: a.inspired_by }))}®</div>` : ''}</div></div>
+      <div class="ident">${iconHTML(a)}<div class="t"><h2 class="name">${nameHTML(a)}</h2><div class="tagline">${esc(tagline)}</div>${a.inspired_by ? `<div class="like">${esc(t('Like {name}', { name: a.inspired_by }))}®</div>` : ''}${a.publisher ? `<div class="like">${esc(a.publisher)}</div>` : ''}</div></div>
       <div class="badges">${badgesHTML(a)}</div>
       <div class="verline">${esc(versionLine(a))}</div>
       ${errHTML(a)}
@@ -682,7 +682,7 @@ async function openDetails(id) {
   const btn = p.href ? `<a class="btn ${p.cls || ''}" href="${esc(p.href)}" target="_blank" rel="noopener">${esc(p.label)}</a>` : `<button class="btn ${p.cls || ''}" ${p.disabled ? 'disabled' : ''} ${p.act ? `data-act="${p.act}" data-id="${esc(a.id)}" data-tag="${esc(p.tag || '')}"` : ''}>${esc(p.label)}</button>`;
   const tile = (k, v, cls = '') => `<div class="tile ${cls}"><span>${esc(k)}</span><b>${v}</b></div>`;
   $('.db', dr).innerHTML = `
-    <div class="hero" style="${appStyle(a)}">${iconHTML(a)}<div class="htext"><h2 class="name">${nameHTML(a)}</h2><div class="headline">${esc(DET.headline)}</div>${lat ? `<div class="small faint">${esc(t('Version'))} ${esc(verOf(lat.version))}${lat.published_at ? ' · ' + esc(fmtDate(lat.published_at)) : ''}</div>` : ''}</div>
+    <div class="hero" style="${appStyle(a)}">${iconHTML(a)}<div class="htext"><h2 class="name">${nameHTML(a)}</h2><div class="headline">${esc(DET.headline)}</div>${a.publisher ? `<div class="small faint">${esc(a.publisher)}</div>` : ''}${lat ? `<div class="small faint">${esc(t('Version'))} ${esc(verOf(lat.version))}${lat.published_at ? ' · ' + esc(fmtDate(lat.published_at)) : ''}</div>` : ''}</div>
       <div class="heroact">${btn}</div></div>
     <div class="row">${a.website ? `<a class="btn" href="${esc(a.website)}" target="_blank" rel="noopener">${esc(t('Website'))} ↗</a>` : ''}${/^[\w.-]+\/[\w.-]+$/.test(a.repo) ? `<a class="btn" href="https://github.com/${esc(a.repo)}" target="_blank" rel="noopener">${esc(t('GitHub'))} ↗</a>` : ''}<a class="btn" href="https://github.com/${esc(a.repo)}/releases" target="_blank" rel="noopener">${esc(t('Releases'))} ↗</a></div>
     <div class="dgrid">

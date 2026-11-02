@@ -11,8 +11,8 @@ Take **CraftHub** (self-hosted, Docker, Rust/axum web-build host with SSO) and:
 ## Done (snapshot state: WORK IN PROGRESS, not release-ready)
 
 ### Launcher infrastructure reused
-- [x] Launcher core crate vendored in `crates/core` (MIT OR Apache-2.0, untouched): catalog, versions, release parsing with URL allow-list, SHA256SUMS parsing, platform/asset choice, status model, release feed, product-page text
-- [x] Catalog = the 13 suite apps from the launcher (CraftHub had 12) + SolidCraft (see note 1)
+- [x] Launcher core crate vendored in `crates/core` (MIT OR Apache-2.0), re-synced from `storytold/craft-launcher` main on 2026-11-01 (adds the `jiff` dependency, `crates/core/tests/fixtures` and the icons in `assets/app-icons`): catalog, versions, release parsing with URL allow-list, SHA256SUMS parsing, platform/asset choice, status model, release feed, product-page text
+- [x] Catalog = the 16 apps from the launcher's `SUITE`, including the community app SolidCraft (`tangency-labs/solidcraft`)
 - [x] Desktop downloads picked per visitor platform with the launcher's `pick_asset`
 - [x] Release feed used as a fast path for update checks (GitHub fallback), plus feed announcements/alerts and repo renames
 - [x] Launcher's 10 translation files (`i18n/*.tsv`) served to the UI; same language detection rules
@@ -73,6 +73,9 @@ Take **CraftHub** (self-hosted, Docker, Rust/axum web-build host with SSO) and:
 2. **"Inspired by"**: the current launcher removed its "Like Adobe Photoshop" lines (older screenshots still show them). CraftHub had them, so they are kept and can be turned off with `SHOW_INSPIRED_BY=false`.
 3. **Trademark: please read.** The launcher's brand licence (`docs/brand/LICENSE-brand.txt`) says forks **must not be called ArtCraft** or use its logo/wordmark. You asked for "ArtCraft Server", so I used that name, but only as text. I did **not** copy the ArtCraft logo/"A" mark files; the header wordmark is plain text in the launcher's display font and the favicon is my own. Before publishing the Docker image or repo under this name, get the ArtCraft team's OK or rename. The name lives in one file, `src/brand.rs` (+ Docker/README names), so renaming is quick.
 4. Rust toolchain used here: 1.91 (the launcher core requires 1.90+); the Dockerfile must use a recent `rust:1` image.
-- [x] SolidCraft lives at `tangency-labs/solidcraft` (built in, `src/config.rs`). Its icon was renamed upstream to `io.tangencylabs.solidcraft.png`; the fallback URL is fixed and the 128px icon is now bundled as `ui/icons/solidcraft.png`.
-- [x] TextureCraft (`storytold/texturecraft`) added to the suite (`crates/core/src/catalog.rs`, product page in `details.rs`, tagline in all 10 `i18n/*.tsv`, "Like Adobe Substance 3D Painter" line). PdfCraft's icon replaced and its brand colour changed to the new crimson (`b70228`).
-- [ ] Run `cargo build --locked && cargo test --workspace --locked` after the SolidCraft repo/icon change (not compiled by me)
+- [x] Re-synced `crates/core` with upstream. SolidCraft and Craft Anything are now in the core `SUITE`; the old `EXTRA_BUILTIN` list and the duplicated `ui/icons/*.png` are gone (icons come from `catalog::app_icon_png`). `AppGroup` became `AppKind`: the API's `group` is now `official` or `community`, and community apps carry a `publisher` byline (Tangency Labs).
+- [x] Display order set in `src/config.rs` (`DISPLAY_ORDER`), independent of the core crate order.
+- [x] Web builds with no `<link rel="icon">` get the app's launcher icon injected (`src/hosting.rs`).
+- [x] App details open as a large centered window, also from a click on a card or table row; the "..." menu flips downward when it has no room above.
+- [x] Compiled and tested (Rust 1.99): `cargo test --workspace --locked` passes, and the server was smoke-tested (app list, icons, favicon injection, path traversal).
+- [ ] The upstream i18n files were not re-fetched (path not found); the existing translations were kept and a `craft-anything` row was added to all 10.

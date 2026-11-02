@@ -60,6 +60,8 @@ pub struct AppView {
     ink_dark: Option<String>,
     inspired_by: Option<&'static str>,
     website: Option<String>,
+    /// Who publishes it, shown for community apps (`Tangency Labs`).
+    publisher: Option<&'static str>,
     has_details: bool,
     /// Added from the UI; can be removed from the UI.
     custom: bool,
@@ -131,12 +133,9 @@ async fn app_view(st: &AppState, id: &str) -> Option<AppView> {
     };
 
     let suite = CraftApp::by_id(&def.id);
-    let suite_index = catalog::SUITE.iter().position(|a| a.id == def.id);
-    let group = match suite.map(|a| a.group) {
-        Some(catalog::AppGroup::Classic) => "classic",
-        Some(catalog::AppGroup::New) => "new",
-        None => "community",
-    };
+    // Official suite apps are one numbered list; community apps (and custom ones) sit apart.
+    let community = suite.map_or(true, |a| a.kind == catalog::AppKind::Community);
+    let group = if community { "community" } else { "official" };
     Some(AppView {
         id: def.id.clone(),
         name: def.name.clone(),
@@ -145,12 +144,13 @@ async fn app_view(st: &AppState, id: &str) -> Option<AppView> {
         // Served (and cached) by this server so browsers never contact GitHub for icons.
         icon: format!("/api/apps/{}/icon", def.id),
         group,
-        number: suite_index.map(|i| i + 1).unwrap_or(0),
+        number: if community { 0 } else { config::display_number(&def.id).unwrap_or(0) },
         color: suite.map(|a| hex(a.color)),
         ink_light: suite.map(|a| hex(a.ink_light)),
         ink_dark: suite.map(|a| hex(a.ink_dark)),
         inspired_by: if st.cfg.show_inspired_by { config::inspired_by(&def.id) } else { None },
         website: suite.map(|a| a.website()),
+        publisher: suite.filter(|a| a.kind == catalog::AppKind::Community).map(|a| a.publisher),
         has_details: details::AppDetails::by_id(&def.id).is_some(),
         custom: def.custom,
         status: status_str,
@@ -898,17 +898,17 @@ pub async fn screenshot(State(st): State<AppState>, Path((id, key)): Path<(Strin
     }
 }
 
-/// Icon for an app. Built-in apps ship theirs inside the binary when `ui/icons/<id>.png` exists; others are fetched once by the server
+/// Icon for an app. Built-in apps ship theirs inside the launcher core (`assets/app-icons/<id>.png`); others are fetched once by the server
 /// from the app's repository and cached on disk (failures are remembered for a day).
 pub async fn icon(State(st): State<AppState>, Path(id): Path<String>) -> Response {
     let Some(def) = st.app_def(&id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
     let headers = [(axum::http::header::CONTENT_TYPE, "image/png"), (axum::http::header::CACHE_CONTROL, "private, max-age=86400")];
-    // Built-in apps (the suite, SolidCraft) use the icon bundled in the binary when there is one.
+    // Built-in apps (the suite) use the icon bundled in the launcher core.
     if !def.custom {
-        if let Some(f) = crate::assets::file(&format!("icons/{}.png", def.id)) {
-            return (headers, f.contents().to_vec()).into_response();
+        if let Some(bytes) = catalog::app_icon_png(&def.id) {
+            return (headers, bytes.to_vec()).into_response();
         }
     }
     let dir = st.cfg.data_dir.join("icons");

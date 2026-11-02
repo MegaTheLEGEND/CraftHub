@@ -65,6 +65,7 @@ fn kind_key(k: PackageKind) -> &'static str {
         PackageKind::AppImage => "appimage",
         PackageKind::Deb => "deb",
         PackageKind::Rpm => "rpm",
+        PackageKind::ArchPkg => "archpkg",
         PackageKind::Flatpak => "flatpak",
         PackageKind::TarGz => "tarball",
     }
