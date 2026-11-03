@@ -308,6 +308,7 @@ pub fn inspired_by(id: &str) -> Option<&'static str> {
         "deckcraft" => "Microsoft PowerPoint",
         "figcraft" => "Figma",
         "texturecraft" => "Adobe Substance 3D Painter",
+        "materialcraft" => "Adobe Substance 3D Designer",
         _ => return None,
     })
 }
@@ -315,7 +316,7 @@ pub fn inspired_by(id: &str) -> Option<&'static str> {
 /// The order official apps are listed and numbered in. The launcher core's own order is not used, so
 /// re-syncing `crates/core` never reshuffles it. An official app missing here (one a later core adds)
 /// is listed after these, in the core's order; community apps always come last.
-pub const DISPLAY_ORDER: [&str; 15] = [
+pub const DISPLAY_ORDER: [&str; 16] = [
     "photocraft",
     "vectorcraft",
     "filmcraft",
@@ -325,6 +326,7 @@ pub const DISPLAY_ORDER: [&str; 15] = [
     "designcraft",
     "figcraft",
     "texturecraft",
+    "materialcraft",
     "wordcraft",
     "soundcraft",
     "deckcraft",
@@ -507,11 +509,12 @@ mod tests {
     fn builtin_catalog_is_the_whole_suite_including_community_apps() {
         let dir = std::env::temp_dir().join("artcraft-server-test-nonexistent");
         let apps = load_catalog(&dir).unwrap();
-        assert_eq!(apps.len(), 16);
+        assert_eq!(apps.len(), 17);
         let s = apps.iter().find(|a| a.id == "solidcraft").expect("solidcraft is built in");
         assert_eq!(s.repo, "tangency-labs/solidcraft");
         assert!(!s.custom);
         assert!(apps.iter().any(|a| a.id == "craft-anything" && a.repo == "storytold/craft-anything"));
+        assert!(apps.iter().any(|a| a.id == "materialcraft" && a.repo == "storytold/materialcraft"));
         assert!(apps.iter().any(|a| a.id == "figcraft"));
         assert!(apps.iter().any(|a| a.id == "texturecraft" && a.repo == "storytold/texturecraft"));
         assert_eq!(inspired_by("photocraft"), Some("Adobe Photoshop"));
@@ -592,8 +595,10 @@ mod tests {
         }
         let apps = builtin_apps();
         let order: Vec<_> = apps.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(&order[..15], &DISPLAY_ORDER[..]);
-        assert_eq!(order[15], "solidcraft");
+        assert_eq!(&order[..16], &DISPLAY_ORDER[..]);
+        assert_eq!(order[16], "solidcraft");
+        assert_eq!(display_number("materialcraft"), Some(10));
+        assert_eq!(display_number("wordcraft"), Some(11));
     }
 
     #[test]

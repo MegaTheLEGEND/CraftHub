@@ -108,6 +108,10 @@ async fn app_view(st: &AppState, id: &str) -> Option<AppView> {
         source: InstallSource::Launcher,
         location: String::new(),
         package: None,
+        // CraftHub installs web builds itself: nothing here is managed by Flatpak or a package manager.
+        externally_managed: false,
+        origin: None,
+        installation: None,
     });
     let lat = match &latest {
         Some(l) => Latest::Found { version: l.semver.as_ref(), has_asset: true },

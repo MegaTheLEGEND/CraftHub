@@ -14,7 +14,7 @@
 # Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
 # name "Craft App Suite",
 # app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
-# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft, TextureCraft, Craft Anything), "GitHub", "Discord".
+# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft, TextureCraft, MaterialCraft, Craft Anything), "GitHub", "Discord".
 # Shortcut keys keep their key-cap names (Shift, Alt, Ctrl, Cmd, Esc).
 # Trailing "…" (U+2026) must be preserved. Placeholders {name}, {n}, {version}, {count}, {v},
 # {what}, {unit}, {real}, {e} must appear in translation.
@@ -173,6 +173,7 @@ cadcraft	Computer-aided design and drafting	Computergestütztes Konstruieren und
 soundcraft	Recording, editing and mixing audio	Audio aufnehmen, bearbeiten und mischen
 figcraft	Interface design and prototyping	Interface-Design und Prototyping
 texturecraft	3D texture painting	3D-Texturmalerei
+materialcraft	Procedural material design	Prozedurales Materialdesign
 craft-anything	Find out how any software works, then craft your own	Finde heraus, wie Software funktioniert, und baue deine eigene
 
 # Contextual: month abbreviations for date rendering

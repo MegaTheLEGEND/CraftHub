@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-core"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "jiff",
  "semver",
@@ -351,7 +351,7 @@ dependencies = [
 
 [[package]]
 name = "crafthub"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "artcraft-launcher-core",
